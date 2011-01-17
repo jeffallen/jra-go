@@ -17,23 +17,25 @@ import (
 )
 
 type connCmd int
+
 const (
-  Listen connCmd = iota
+	Listen connCmd = iota
 	Write
 	Take
 	Steal
-  Close
+	Close
 )
 
 type connReq struct {
-  cmd connCmd
-  name string
+	cmd   connCmd
+	name  string
 	input []byte
 }
 
 type connReplyCode int
+
 const (
-  Ok connReplyCode = iota
+	Ok connReplyCode = iota
 	Err
 	ReadWrite
 	ReadOnly
@@ -42,23 +44,23 @@ const (
 
 type connReply struct {
 	code connReplyCode
-	err string
+	err  string
 	data []byte
 }
 
-func debug(arg ... interface{}) {
+func debug(arg ...interface{}) {
 	if *debugFlag {
 		log.Print(arg...)
-		buf := []byte{ '\r', '\n' }
+		buf := []byte{'\r', '\n'}
 		os.Stdout.Write(buf[:])
 	}
 }
 
 func take(enc *gob.Encoder, ts connCmd) {
-		req := &connReq{ cmd: ts }
-		// we ignore the error because there's not much to do; the
-		// main loop will figure it out
-		_ = enc.Encode(req)
+	req := &connReq{cmd: ts}
+	// we ignore the error because there's not much to do; the
+	// main loop will figure it out
+	_ = enc.Encode(req)
 }
 
 var debugFlag *bool = flag.Bool("debug", false, "show debug messages")
@@ -109,10 +111,10 @@ func main() {
 	take(enc, Take)
 
 	go readinput(c, enc)
-	
+
 	dec := gob.NewDecoder(c)
 	reply := new(connReply)
- L:
+L:
 	for {
 		err := dec.Decode(reply)
 		if err != nil {
@@ -159,15 +161,15 @@ func readinput(c net.Conn, enc *gob.Encoder) {
 			continue
 		}
 
-		if buf[0] == 0x01	 {			// ctrl-a
+		if buf[0] == 0x01 { // ctrl-a
 			ctrla := escape(c, enc)
 			if !ctrla {
 				continue
 			}
 		}
 
-		if (readwrite) {
-			req := &connReq{ cmd: Write, input: buf[:] }
+		if readwrite {
+			req := &connReq{cmd: Write, input: buf[:]}
 			err = enc.Encode(req)
 			if err != nil {
 				log.Print("Failed to write on connection.")
@@ -199,7 +201,7 @@ Loop:
 		fallthrough
 	case 'h':
 		r := "read-only"
-		if (readwrite) {
+		if readwrite {
 			r = "read-write"
 		}
 		fmt.Print("\r\nConnected to: ", cons, " (", r, ")")

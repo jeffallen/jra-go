@@ -26,43 +26,43 @@ Jeff R. Allen
 <jra@nella.org>
 
 Build:
-	cd server
-	gomake install
-	cd ../client
-	gomake install
+  cd server
+  gomake install
+  cd ../client
+  gomake install
 
 Run:
-	goconserver [ -fake ] -config config.js
-		See the configuration section below for how to configure it.
+  goconserver [ -fake ] -config config.js
+    See the configuration section below for how to configure it.
 
-	goconsole <console-name>
-		Inside of goconsole, the escape key is ctrl-A. Once you press it,
-		goconsole is listening for commands directly from you. Hit ? for help.
-		Otherwise, all characters you type will be sent to the console,
-		if you are the writer for the console.
+  goconsole <console-name>
+    Inside of goconsole, the escape key is ctrl-A. Once you press it,
+    goconsole is listening for commands directly from you. Hit ? for help.
+    Otherwise, all characters you type will be sent to the console,
+    if you are the writer for the console.
 
 Configuration:
-	config.js should be a file in JSON-format. The top level object
-	is a hash:
+  config.js should be a file in JSON-format. The top level object
+  is a hash:
 
-		consoles:	a hash:
-				keys: names of the consoles
-				values: strings, of the form expected by net.Dial
-			This is the list of RTelnet consoles that goconserver will
-			attempt to connect to and monitor. The names can be used on the
-			commandline of goconsole.
+    consoles: a hash:
+        keys: names of the consoles
+        values: strings, of the form expected by net.Dial
+      This is the list of RTelnet consoles that goconserver will
+      attempt to connect to and monitor. The names can be used on the
+      commandline of goconsole.
 
-	Any other keys in the top level hash are ignored.
+  Any other keys in the top level hash are ignored.
 
 Fake server:
-	For testing when you don't have an RTelnet server available,
-	specify -fake to the server. It will add an extra console to the
-	config called "fake", which just echos back everything you type
-	to it. 
+  For testing when you don't have an RTelnet server available,
+  specify -fake to the server. It will add an extra console to the
+  config called "fake", which just echos back everything you type
+  to it. 
 
 License:
-	Copyright 2009 Jeff R. Allen. All rights reserved.
-	Use of this source code is governed by a BSD-style
-	license that can be found in the LICENSE file of the Go
-	distribution.
+  Copyright 2009 Jeff R. Allen. All rights reserved.
+  Use of this source code is governed by a BSD-style
+  license that can be found in the LICENSE file of the Go
+  distribution.
 

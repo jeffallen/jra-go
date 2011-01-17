@@ -16,7 +16,7 @@ import (
 	"json"
 )
 
-var managers map[string] *consoleManager
+var managers map[string]*consoleManager
 
 var fake *bool = flag.Bool("fake", false, "run a fake server")
 var config *string = flag.String("config", "", "the JSON config file")
@@ -27,7 +27,7 @@ func init() {
 
 func addConsole(cons string, dial string) {
 	m, ok := managers[cons]
-	if ! ok {
+	if !ok {
 		log.Printf("Adding console %v on %v.", cons, dial)
 		m = NewConsoleManager(cons, dial)
 		managers[cons] = m
@@ -38,9 +38,9 @@ func addConsole(cons string, dial string) {
 }
 
 func main() {
-	managers = make(map[string] *consoleManager)
+	managers = make(map[string]*consoleManager)
 
-	if (*config == "") {
+	if *config == "" {
 		log.Exit("usage: goconserver -config config.js")
 	}
 	r, err := os.Open(*config, os.O_RDONLY, 0)
@@ -54,18 +54,18 @@ func main() {
 		log.Exit("JSON decode: ", err)
 	}
 	hash, ok := conf.(map[string]interface{})
-	if ! ok {
+	if !ok {
 		log.Exit("JSON format error: got %T", conf)
 	}
 	consoles, ok := hash["consoles"]
-	if ! ok {
+	if !ok {
 		log.Exit("JSON format error: key consoles not found")
 	}
 	c2, ok := consoles.(map[string]interface{})
-	if ! ok {
+	if !ok {
 		log.Exitf("JSON format error: consoles key wrong type, %T", consoles)
 	}
-	for k,v := range c2 {
+	for k, v := range c2 {
 		s, ok := v.(string)
 		if ok {
 			addConsole(k, s)
@@ -74,7 +74,7 @@ func main() {
 		}
 	}
 
-	if (*fake) {
+	if *fake {
 		ready := make(chan bool)
 		go fakeserver(ready)
 		_ = <-ready
@@ -87,35 +87,35 @@ func main() {
 	}
 	log.Print("Goconserver listening on ", l.Addr())
 
-  for {
-    rw, e := l.Accept()
-    if e != nil {
+	for {
+		rw, e := l.Accept()
+		if e != nil {
 			log.Print("accept: ", e)
 			continue
-    }
-    c := newConn(rw)
-    go c.run()
-  }
+		}
+		c := newConn(rw)
+		go c.run()
+	}
 }
 
 func fakeserver(ready chan bool) {
-  l, err := net.Listen("tcp", ":2070")
-  if err != nil {
-    log.Exit("Cannot start fake server: ", err)
-  }
-  log.Print("Fake server listening on ", l.Addr())
+	l, err := net.Listen("tcp", ":2070")
+	if err != nil {
+		log.Exit("Cannot start fake server: ", err)
+	}
+	log.Print("Fake server listening on ", l.Addr())
 
 	ready <- true
 
- L:
-  for {
-    rw, e := l.Accept()
-    if e != nil {
-      log.Print("(fake) accept: ", e)
-      continue
-    }
+L:
+	for {
+		rw, e := l.Accept()
+		if e != nil {
+			log.Print("(fake) accept: ", e)
+			continue
+		}
 		go func() {
-    	for {
+			for {
 				var buf [1]byte
 				n, err := rw.Read(buf[:])
 				if err != nil || n != 1 {
@@ -126,7 +126,7 @@ func fakeserver(ready chan bool) {
 				rw.Write(buf[:])
 			}
 			rw.Close()
-  	}()
+		}()
 	}
 }
 
@@ -135,6 +135,7 @@ type connection struct {
 }
 
 type connCmd int
+
 const (
 	Listen connCmd = iota
 	Write
@@ -144,24 +145,25 @@ const (
 )
 
 type connReq struct {
-	cmd connCmd
-	name string
+	cmd   connCmd
+	name  string
 	input []byte
 }
 
 type connReplyCode int
+
 const (
-  Ok connReplyCode = iota
-  Err
+	Ok connReplyCode = iota
+	Err
 	ReadWrite
 	ReadOnly
-  Data
+	Data
 )
 
 type connReply struct {
-  code connReplyCode
-  err string
-  data []byte
+	code connReplyCode
+	err  string
+	data []byte
 }
 
 func newConn(rw net.Conn) (c *connection) {
@@ -219,7 +221,7 @@ L:
 					reply.err = "unknown console name"
 					enc.Encode(reply)
 				} else {
-					listen := consoleRequest{ cmd: conListen, ch: evCh }
+					listen := consoleRequest{cmd: conListen, ch: evCh}
 					mgr.reqCh <- listen
 
 					reply.code = Ok
@@ -245,10 +247,10 @@ L:
 						cmd = conSteal
 					}
 
-					r := consoleRequest{ cmd: cmd, inch: inCh, ok: okCh }
+					r := consoleRequest{cmd: cmd, inch: inCh, ok: okCh}
 					mgr.reqCh <- r
-					ok := <- okCh
-					if (ok) {
+					ok := <-okCh
+					if ok {
 						reply.code = ReadWrite
 					} else {
 						reply.code = ReadOnly
@@ -268,31 +270,31 @@ L:
 					log.Print("Write when we don't own the console.")
 				} else {
 					log.Print("Writing ", req.input, " into channel ", inCh)
-					inCh<-req.input
+					inCh <- req.input
 					runtime.Gosched()
 				}
 			case Close:
 				break L
 			}
-/* this doesn't work: once it is closed, it triggers the select repeatedly.
-	Need to be notified a different way. */
-/*		case _ = <-inCh:
-			if closed(inCh) {
-				reply.code = ReadOnly
-				reply.err = "another user has stolen the console from you"
+			/* this doesn't work: once it is closed, it triggers the select repeatedly.
+			Need to be notified a different way. */
+			/*		case _ = <-inCh:
+					if closed(inCh) {
+						reply.code = ReadOnly
+						reply.err = "another user has stolen the console from you"
 
-				err := enc.Encode(reply)
-				if (err != nil) {
-					log.Print("connection ", c.rw, ", failed to send lost reply: ", err)
-					break L
-				}
-			}
-*/
+						err := enc.Encode(reply)
+						if (err != nil) {
+							log.Print("connection ", c.rw, ", failed to send lost reply: ", err)
+							break L
+						}
+					}
+			*/
 		case ev := <-evCh:
 			reply.code = Data
 			reply.data = ev.data
 			err := enc.Encode(reply)
-			if (err != nil) {
+			if err != nil {
 				log.Print("connection ", c.rw, ", failed to send data: ", err)
 				break L
 			}
@@ -316,6 +318,7 @@ type consoleEvent struct {
 }
 
 type consoleCmd int
+
 const (
 	conListen consoleCmd = iota
 	conTake
@@ -323,29 +326,29 @@ const (
 )
 
 type consoleRequest struct {
-	cmd consoleCmd
-	ch chan consoleEvent
+	cmd  consoleCmd
+	ch   chan consoleEvent
 	inch chan []byte
-	ok chan bool			// for asynchronous reply
+	ok   chan bool // for asynchronous reply
 }
 
 type inputReq struct {
 	data []byte
-	raw bool
+	raw  bool
 }
 
 type consoleManager struct {
 	cons, addr string
-  c net.Conn
-	quitCh chan bool
-	dataCh chan []byte
-	inputCh chan inputReq				// from the consoleManager to the sender
-	owner chan []byte
-	reqCh chan consoleRequest
+	c          net.Conn
+	quitCh     chan bool
+	dataCh     chan []byte
+	inputCh    chan inputReq // from the consoleManager to the sender
+	owner      chan []byte
+	reqCh      chan consoleRequest
 }
 
 type listener struct {
-	ch chan consoleEvent
+	ch   chan consoleEvent
 	next *listener
 }
 
@@ -437,7 +440,7 @@ func (m *consoleManager) run() {
 	return
 }
 
-func (m *consoleManager)setOwner(ch chan []byte) {
+func (m *consoleManager) setOwner(ch chan []byte) {
 	if m.owner != nil {
 		// tell the current owner he's been pwned
 		close(m.owner)
@@ -451,7 +454,7 @@ func (m *consoleManager)setOwner(ch chan []byte) {
 		log.Print("pumper starting for chan ", ch)
 		for in := range ch {
 			log.Print("bytes arrived:", len(in))
-			m.inputCh <- inputReq{ data: in, raw: false }
+			m.inputCh <- inputReq{data: in, raw: false}
 		}
 		m.owner = nil
 		log.Print("pumper done")
@@ -459,6 +462,7 @@ func (m *consoleManager)setOwner(ch chan []byte) {
 }
 
 type iacState int
+
 const (
 	None iacState = iota
 	IAC
@@ -469,8 +473,8 @@ const (
 func (m *consoleManager) recv() {
 	var st iacState = None
 
-  file, err := os.Open(m.cons, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0600)
-	if (err != nil) {
+	file, err := os.Open(m.cons, os.O_WRONLY|os.O_CREAT|os.O_APPEND, 0600)
+	if err != nil {
 		log.Printf("Error opening log file %s: %v", file, err)
 		return
 	}
@@ -517,8 +521,8 @@ func (m *consoleManager) recv() {
 			continue
 		case IACWill:
 			var iacbuf [3]byte
-			iacbuf[0] = 255		// IAC
-			iacbuf[1] = 253		// DO
+			iacbuf[0] = 255 // IAC
+			iacbuf[1] = 253 // DO
 			// we only want to reply "do" for 1 (8-bit) and 3 (sga)
 			if buf[0] == 1 || buf[0] == 3 {
 				iacbuf[2] = buf[0]
