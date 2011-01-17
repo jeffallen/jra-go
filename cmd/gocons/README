@@ -26,9 +26,6 @@ Jeff R. Allen
 <jra@nella.org>
 
 Build:
-  cd server
-  gomake install
-  cd ../client
   gomake install
 
 Run:
