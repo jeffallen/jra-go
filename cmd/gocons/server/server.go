@@ -1,3 +1,8 @@
+//	Copyright 2009 Jeff R. Allen. All rights reserved.
+//	Use of this source code is governed by a BSD-style
+//	license that can be found in the LICENSE file of the Go
+//	distribution.
+
 package main
 
 import (
@@ -8,31 +13,73 @@ import (
 	"gob"
 	"flag"
 	"runtime"
+	"json"
 )
 
 var managers map[string] *consoleManager
 
 var fake *bool = flag.Bool("fake", false, "run a fake server")
+var config *string = flag.String("config", "", "the JSON config file")
 
 func init() {
 	flag.Parse()
 }
 
+func addConsole(cons string, dial string) {
+	m, ok := managers[cons]
+	if ! ok {
+		log.Printf("Adding console %v on %v.", cons, dial)
+		m = NewConsoleManager(cons, dial)
+		managers[cons] = m
+		go m.run()
+	} else {
+		log.Print("Duplicate console %v, ignoring it.")
+	}
+}
+
 func main() {
 	managers = make(map[string] *consoleManager)
 
-	var cons, addr string
+	if (*config == "") {
+		log.Exit("usage: goconserver -config config.js")
+	}
+	r, err := os.Open(*config, os.O_RDONLY, 0)
+	if err != nil {
+		log.Exitf("Cannot read config file %v: %v", *config, err)
+	}
+	dec := json.NewDecoder(r)
+	var conf interface{}
+	err = dec.Decode(&conf)
+	if err != nil {
+		log.Exit("JSON decode: ", err)
+	}
+	hash, ok := conf.(map[string]interface{})
+	if ! ok {
+		log.Exit("JSON format error: got %T", conf)
+	}
+	consoles, ok := hash["consoles"]
+	if ! ok {
+		log.Exit("JSON format error: key consoles not found")
+	}
+	c2, ok := consoles.(map[string]interface{})
+	if ! ok {
+		log.Exitf("JSON format error: consoles key wrong type, %T", consoles)
+	}
+	for k,v := range c2 {
+		s, ok := v.(string)
+		if ok {
+			addConsole(k, s)
+		} else {
+			log.Exit("Dial string for console %v is not a string.", k)
+		}
+	}
+
 	if (*fake) {
 		ready := make(chan bool)
 		go fakeserver(ready)
 		_ = <-ready
-		cons, addr = "fake", ":2070"
-	} else {
-		cons, addr = "msi-switch", "msi-rt3:2070"
+		addConsole("fake", ":2070")
 	}
-	m := NewConsoleManager(cons, addr)
-	managers[cons] = m
-	go m.run()
 
 	l, err := net.Listen("tcp", ":1234")
 	if err != nil {
