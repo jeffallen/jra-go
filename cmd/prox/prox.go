@@ -12,7 +12,7 @@ import (
 var gLink *linkio.Link
 
 func init() {
-	gLink = linkio.NewLink(56000 /* kbps */)
+	gLink = linkio.NewLink(56 /* kbps */)
 }
 
 type Proxy struct {
@@ -41,7 +41,6 @@ func (p *Proxy) ServeHTTP(wr http.ResponseWriter, r *http.Request) {
 		return
 	}
 	case "GET": {
-		log.Printf("getting %v", r.RawURL)
 		resp, _, err = http.Get(r.RawURL)
 	}
 	case "POST": {
@@ -70,10 +69,8 @@ func safeGetCT(r1 *http.Request, r2 *http.Response, def string) (ct string) {
 	var ok bool
 	if r1 != nil {
 		ct, ok = r1.Header["Content-Type"]
-		log.Print("req ct ", ct)
 	} else {
 		ct, ok = r2.Header["Content-Type"]
-		log.Print("resp ct ", ct)
 	}
 	if ! ok {
 		ct = def
