@@ -6,7 +6,14 @@ import (
 	"os"
 	"log"
 	"strings"
+	"jra-go.googlecode.com/hg/linkio"
 )
+
+var gLink *linkio.Link
+
+func init() {
+	gLink = linkio.NewLink(56000 /* kbps */)
+}
 
 type Proxy struct {
 }
@@ -18,18 +25,6 @@ func loghit(r *http.Request, code int, hit bool) {
 }
 
 func (p *Proxy) ServeHTTP(wr http.ResponseWriter, r *http.Request) {
-	if r.Method == "CONNECT" {
-//CONNECT gmail.com:443 HTTP/1.1
-//User-Agent: 
-//Proxy-Connection: keep-alive
-//Host: gmail.com
-//HTTP/1.1 200 Connection established.
-//Proxy-Connection: close
-		log.Printf("connect %s", r.Host)
-		wr.WriteHeader(http.StatusInternalServerError)
-		loghit(r, http.StatusInternalServerError, false)
-	}
-
 	if ! strings.HasPrefix(r.RawURL, "http://") {
 		http.Error(wr, "501 I only proxy http", http.StatusNotImplemented)
 		loghit(r, http.StatusNotImplemented, false)
@@ -63,7 +58,10 @@ func (p *Proxy) ServeHTTP(wr http.ResponseWriter, r *http.Request) {
 	}
 	wr.SetHeader("Content-Type", safeGetCT(nil, resp, "text/plain"))
 	wr.WriteHeader(resp.StatusCode)
-	io.Copy(wr, resp.Body)
+
+	// simulate it coming in over gLink, a shared rate-limited link
+	io.Copy(wr, linkio.NewLinkReader(resp.Body, gLink))
+
 	resp.Body.Close()
 	loghit(r, resp.StatusCode, false)
 }
