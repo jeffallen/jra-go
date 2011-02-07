@@ -13,7 +13,7 @@ import (
 var gLink *linkio.Link
 
 func init() {
-	gLink = linkio.NewLink(56 /* kbps */)
+	gLink = linkio.NewLink(56 /* kbps */ )
 }
 
 func loghit(r *http.Request, code int) {
@@ -25,13 +25,12 @@ func loghit(r *http.Request, code int) {
 func hasPort(s string) bool { return strings.LastIndex(s, ":") > strings.LastIndex(s, "]") }
 
 var doNotCopy = map[string]bool{
-  "Connection":        true,
-  "Transfer-Encoding": true,
-  "Trailer":           true,
+	"Connection":        true,
+	"Transfer-Encoding": true,
+	"Trailer":           true,
 }
 
-type Proxy struct {
-}
+type Proxy struct{}
 
 func NewProxy() *Proxy { return &Proxy{} }
 
@@ -55,7 +54,7 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	// don't set RawURL, or else the request will be written with only
 	// it, instead of using the URL.Path as we want (see (* http.Request)Write)
 	oreq.URL = ourl
-	
+
 	if oreq.URL.Scheme != "http" {
 		http.Error(cwr, "I only proxy http", http.StatusNotImplemented)
 		loghit(creq, http.StatusNotImplemented)

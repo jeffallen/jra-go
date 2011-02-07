@@ -15,8 +15,8 @@ import (
 // A LinkReader wraps an io.Reader, simulating reading from a
 // shared access link with a fixed maximum speed.
 type LinkReader struct {
-	r io.Reader
-  link *Link
+	r    io.Reader
+	link *Link
 }
 
 // A Link serializes requests to sleep, simulating the way data travels
@@ -25,15 +25,15 @@ type LinkReader struct {
 // sharing a link). The sharing behavior is approximately fair, as implemented
 // by Go when scheduling reads from a contested blocking channel.
 type Link struct {
-  in chan linkRequest
-  speed int64		// nanosec per bit
+	in    chan linkRequest
+	speed int64 // nanosec per bit
 }
 
 // A linkRequest asks the link to simulate sending that much data
 // and return a true on the channel when it has accomplished the request.
 type linkRequest struct {
 	bytes int
-	done chan bool
+	done  chan bool
 }
 
 // NewLinkReader returns a LinkReader that returns bytes from r,
@@ -46,7 +46,7 @@ func (link *Link) NewLinkReader(r io.Reader) (s *LinkReader) {
 // NewLink returns a new Link running at kbps.
 func NewLink(kbps int) (l *Link) {
 	// allow up to 100 outstanding requests
-	l = &Link{ in: make(chan linkRequest, 100) }
+	l = &Link{in: make(chan linkRequest, 100)}
 	_ = l.SetSpeed(kbps)
 
 	// This goroutine serializes the requests. He could calculate
@@ -56,7 +56,7 @@ func NewLink(kbps int) (l *Link) {
 
 	go func() {
 		for lr := range l.in {
-  		// bits * nanosec/bit = nano to wait
+			// bits * nanosec/bit = nano to wait
 			delay := int64(lr.bytes*8) * l.speed
 			time.Sleep(delay)
 			lr.done <- true
@@ -70,14 +70,14 @@ func NewLink(kbps int) (l *Link) {
 // The speed is expressed in kilobits per second, where kilo = 1024.
 func (l *Link) SetSpeed(kbps int) int {
 	old := 1e9 * l.speed / 1024
-  // l.speed is stored in ns/bit
-	l.speed = 1e9 / int64(kbps * 1024)
+	// l.speed is stored in ns/bit
+	l.speed = 1e9 / int64(kbps*1024)
 	return int(old)
 }
 
 // why isn't this in package math? hmm.
 func min(a, b int) int {
-	if (a < b) {
+	if a < b {
 		return a
 	}
 	return b
@@ -85,21 +85,20 @@ func min(a, b int) int {
 
 // Satisfies interface io.Reader.
 func (l *LinkReader) Read(buf []byte) (n int, err os.Error) {
-  // Read small chunks at a time, even if they ask for more,
+	// Read small chunks at a time, even if they ask for more,
 	// preventing one LinkReader from saturating the simulated link.
 	// 1500 is the MTU for Ethernet, i.e. a likely maximum packet
 	// size.
 	toRead := min(len(buf), 1500)
 	n, err = l.r.Read(buf[0:toRead])
-  if err != nil {
+	if err != nil {
 		return 0, err
 	}
 
-  // send in the request to sleep to the Link and sleep
-	lr := linkRequest{ bytes: n, done: make(chan bool) }
+	// send in the request to sleep to the Link and sleep
+	lr := linkRequest{bytes: n, done: make(chan bool)}
 	l.link.in <- lr
-	_ = <- lr.done
+	_ = <-lr.done
 
 	return
 }
-
