@@ -28,8 +28,12 @@ func (ac* autoConsumer)run() {
 	 assign:
 		for i, c := range ac.consumers {
 			if c != nil {
-				if ok = c <- job; ok {
+				select {
+				case c <- job:
+					// send ok, so finish up
 					break assign
+				default:
+					// on blocking send, continue below
 				}
 			}
 			ac.consumers[i] = make(chan interface {})
@@ -49,3 +53,5 @@ func (ac* autoConsumer)run() {
 		close(c)
 	}
 }
+
+// ex: ts=2

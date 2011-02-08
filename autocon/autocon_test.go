@@ -26,13 +26,17 @@ func TestUnblock(t *testing.T) {
 	}
 	for i := 0; i < 10; i++ {
 		runtime.Gosched()
-		if _, ok := <- results; !ok {
-			t.Error("missing result ", i)
+		select {
+			case <- results:
+			default:
+				t.Error("missing result ", i)
 		}
 	}
-	_, ok := <- results
-	if ok {
-		t.Error("too many results")
+	select {
+		case _ = <- results:
+			t.Error("too many results")
+		default:
+			// ok, we expected this branch
 	}
 }
 
@@ -54,13 +58,19 @@ func TestSlow(t *testing.T) {
 	}
 	for i := 0; i < 10; i++ {
 		runtime.Gosched()
-		if _, ok := <- workers; !ok {
-			t.Error("missing worker ", i)
+		select {
+			case _ = <- workers:
+				// ok
+			default:
+				t.Error("missing worker ", i)
 		}
 	}
-	_, ok := <- workers
-	if ok {
-		t.Error("too many workers")
+	select {
+		case _ = <- workers:
+			t.Error("too many workers")
+		default:
+			// ok, should be no more results
 	}
 }
 
+// ex: ts=2
