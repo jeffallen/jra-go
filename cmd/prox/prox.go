@@ -75,7 +75,7 @@ func (p *Proxy) ServeHTTP(wr http.ResponseWriter, r *http.Request) {
 	wr.WriteHeader(resp.StatusCode)
 
 	// simulate it coming in over gLink, a shared rate-limited link
-	io.Copy(wr, linkio.NewLinkReader(resp.Body, gLink))
+	io.Copy(wr, gLink.NewLinkReader(resp.Body))
 
 	resp.Body.Close()
 	loghit(r, resp.StatusCode, false)
@@ -98,7 +98,7 @@ func main() {
 	proxy := NewProxy()
 	err := http.ListenAndServe(":12345", proxy)
 	if err != nil {
-		log.Exit("ListenAndServe: ", err.String())
+		log.Fatal("ListenAndServe: ", err.String())
 	}
 }
 
