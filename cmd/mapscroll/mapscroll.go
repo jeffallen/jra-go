@@ -1,6 +1,6 @@
-# Copyright 2011 The Go Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style
-# license that can be found in the LICENSE file.
+// Copyright 2011 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 package main
 
@@ -65,17 +65,20 @@ func urlGen(urls chan string) {
 func processEvent(ch <-chan interface {}) {
 	for {
 		if closed(ch) {
-			log.Exit("X display closed.")
+			log.Fatal("X display closed.")
 		}
-		ev, ok := <-ch
-		if ! ok {
-			// no events, return
-			return
+		var ev interface {}
+		select {
+			case ev = <-ch:
+				// ok, continue
+			default:
+				// no events
+				return
 		}
 
 		switch ev.(type) {
 		case draw.ErrEvent:
-			log.Exit("X11 err: ", ev.(draw.ErrEvent).Err)
+			log.Fatal("X11 err: ", ev.(draw.ErrEvent).Err)
 		}
 	}
 }
@@ -89,7 +92,7 @@ func main () {
 
 	xdisp, err := x11.NewWindow()
 	if err != nil {
-		log.Exit("X11 error: ", err)
+		log.Fatal("X11 error: ", err)
 	}
 	screen := xdisp.Screen()
 
