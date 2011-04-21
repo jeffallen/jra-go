@@ -80,7 +80,7 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	if !hasPort(addr) {
 		addr += ":" + oreq.URL.Scheme
 	}
-	c, err := net.Dial("tcp", "", addr)
+	c, err := net.Dial("tcp", addr)
 	if err != nil {
 		http.Error(cwr, err.String(), http.StatusGatewayTimeout)
 		loghit(creq, http.StatusGatewayTimeout)
@@ -112,9 +112,8 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 
 	for hdr, val := range oresp.Header {
 		if !doNotCopy[hdr] {
-			for i := 0; i < len(val); i++ {
-				cwr.SetHeader(hdr, val[i])
-			}
+			h := cwr.Header()
+			h[hdr] = val
 		}
 	}
 	cwr.WriteHeader(oresp.StatusCode)
