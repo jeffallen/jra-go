@@ -70,7 +70,7 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	if oreq.Method == "POST" {
 		oreq.Method = "POST"
 		if _, ok := oreq.Header["Content-Type"]; !ok {
-			oreq.Header["Content-Type"] = "multipart/form-data"
+			oreq.Header.Set("Content-Type", "multipart/form-data")
 		}
 		oreq.ContentLength = creq.ContentLength
 		oreq.Body = creq.Body
@@ -100,7 +100,7 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 		return
 	}
 
-	oresp, err := cc.Read()
+	oresp, err := cc.Read(oreq)
 	if err != nil && err != http.ErrPersistEOF {
 		http.Error(cwr, err.String(), http.StatusGatewayTimeout)
 		loghit(creq, http.StatusGatewayTimeout)
@@ -112,7 +112,9 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 
 	for hdr, val := range oresp.Header {
 		if !doNotCopy[hdr] {
-			cwr.SetHeader(hdr, val)
+			for i := 0; i < len(val); i++ {
+				cwr.SetHeader(hdr, val[i])
+			}
 		}
 	}
 	cwr.WriteHeader(oresp.StatusCode)
@@ -127,7 +129,7 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 
 func main() {
 	proxy := NewProxy()
-	err := http.ListenAndServe(":12345", proxy)
+	err := http.ListenAndServe("[::]:12345", proxy)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err.String())
 	}
