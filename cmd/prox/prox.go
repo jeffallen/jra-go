@@ -1,13 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"http"
 	"io"
-	"fmt"
+	"jra-go.googlecode.com/hg/linkio"
+	"log"
 	"net"
 	"strings"
-	"log"
-	"jra-go.googlecode.com/hg/linkio"
+	"url"
 )
 
 var gLink *linkio.Link
@@ -44,7 +45,7 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	oreq.Header = creq.Header
 	oreq.Method = creq.Method
 
-	ourl, err := http.ParseURL(creq.RawURL)
+	ourl, err := url.Parse(creq.RawURL)
 	if err != nil {
 		http.Error(cwr, fmt.Sprint("Malformed request", err),
 			http.StatusNotImplemented)

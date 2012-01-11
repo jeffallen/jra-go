@@ -5,27 +5,28 @@
 package autocon
 
 type autoConsumer struct {
-	worker	func(chan interface {})
-	consumers []chan interface {}
-	ch chan interface {}
+	worker    func(chan interface{})
+	consumers []chan interface{}
+	ch        chan interface{}
 }
 
-func NewAutoConsumer(maxConsumers int, worker func(chan interface {})) chan interface {} {
+func NewAutoConsumer(maxConsumers int, worker func(chan interface{})) chan interface{} {
 	ac := new(autoConsumer)
 	ac.worker = worker
-	ac.consumers = make([]chan interface {}, maxConsumers)
-	ac.ch = make(chan interface {})
+	ac.consumers = make([]chan interface{}, maxConsumers)
+	ac.ch = make(chan interface{})
 	go ac.run()
 	return ac.ch
 }
 
-func (ac* autoConsumer)run() {
-	for job := range ac.ch {
-		var ok bool
-		if closed(ac.ch) {
+func (ac *autoConsumer) run() {
+
+	for {
+		job, ok := <-ac.ch
+		if !ok {
 			break
 		}
-	 assign:
+	assign:
 		for i, c := range ac.consumers {
 			if c != nil {
 				select {
@@ -36,13 +37,13 @@ func (ac* autoConsumer)run() {
 					// on blocking send, continue below
 				}
 			}
-			ac.consumers[i] = make(chan interface {})
+			ac.consumers[i] = make(chan interface{})
 			go ac.worker(ac.consumers[i])
 			ac.consumers[i] <- job
 			ok = true
 			break assign
 		}
-		if ! ok {
+		if !ok {
 			// we didn't manage to find/create a worker to handle the job, so panic
 			panic("no worker available for job")
 		}
