@@ -107,7 +107,6 @@ func fakeserver(ready chan bool) {
 
 	ready <- true
 
-//L:
 	for {
 		rw, e := l.Accept()
 		if e != nil {
@@ -409,15 +408,15 @@ func (m *consoleManager) run() {
 				// multicast the data to the listeners
 				for l := listeners; l != nil; l = l.next {
 					//if closed(l.ch) {
-						// TODO: need to remove this node from the list, not just mark nil
+					// TODO: need to remove this node from the list, not just mark nil
 					//	l.ch = nil
 					//	log.Print("Marking listener ", l, " no longer active.")
 					//}
 					if l.ch != nil {
 						select {
-							case l.ch <- consoleEvent{data}:
-							default:	
-								log.Print("Listener ", l, " lost an event.")
+						case l.ch <- consoleEvent{data}:
+						default:
+							log.Print("Listener ", l, " lost an event.")
 						}
 					}
 				}
