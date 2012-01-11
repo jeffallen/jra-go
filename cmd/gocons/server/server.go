@@ -43,7 +43,7 @@ func main() {
 	if *config == "" {
 		log.Fatal("usage: goconserver -config config.js")
 	}
-	r, err := os.Open(*config, os.O_RDONLY, 0)
+	r, err := os.OpenFile(*config, os.O_RDONLY, 0)
 	if err != nil {
 		log.Fatalf("Cannot read config file %v: %v", *config, err)
 	}
@@ -107,7 +107,7 @@ func fakeserver(ready chan bool) {
 
 	ready <- true
 
-L:
+//L:
 	for {
 		rw, e := l.Accept()
 		if e != nil {
@@ -145,9 +145,9 @@ const (
 )
 
 type connReq struct {
-	cmd   connCmd
-	name  string
-	input []byte
+	Cmd   connCmd
+	Name  string
+	Input []byte
 }
 
 type connReplyCode int
@@ -161,9 +161,9 @@ const (
 )
 
 type connReply struct {
-	code connReplyCode
-	err  string
-	data []byte
+	Code connReplyCode
+	Err  string
+	Data []byte
 }
 
 func newConn(rw net.Conn) (c *connection) {
@@ -202,29 +202,29 @@ L:
 	for {
 		reply := new(connReply)
 		select {
-		case req := <-reqCh:
-			if closed(reqCh) {
+		case req, closed := <-reqCh:
+			if !closed {
 				log.Print("connection ", c, " terminated")
 				break L
 			}
-			switch req.cmd {
+			switch req.Cmd {
 			default:
 				log.Print("connection ", c.rw, " bad command")
 				break L
 			case Listen:
-				log.Print("connection ", c.rw, " wants to listen to ", req.name)
+				log.Print("connection ", c.rw, " wants to listen to ", req.Name)
 
 				var ok bool
-				mgr, ok = managers[req.name]
+				mgr, ok = managers[req.Name]
 				if !ok {
-					reply.code = Err
-					reply.err = "unknown console name"
+					reply.Code = Err
+					reply.Err = "unknown console name"
 					enc.Encode(reply)
 				} else {
 					listen := consoleRequest{cmd: conListen, ch: evCh}
 					mgr.reqCh <- listen
 
-					reply.code = Ok
+					reply.Code = Ok
 					err := enc.Encode(reply)
 					if err != nil {
 						log.Print("connection ", c.rw, " failed to send reply: ", err)
@@ -235,15 +235,15 @@ L:
 				fallthrough
 			case Steal:
 				if mgr == nil {
-					reply.code = Err
-					reply.err = "not connected to a console yet"
+					reply.Code = Err
+					reply.Err = "not connected to a console yet"
 				} else {
 					// talk to the consoleManager asynchronously to ask to take ownership
 					inCh = make(chan []byte, 10)
 					okCh := make(chan bool)
 
 					cmd := conTake
-					if req.cmd == Steal {
+					if req.Cmd == Steal {
 						cmd = conSteal
 					}
 
@@ -251,10 +251,10 @@ L:
 					mgr.reqCh <- r
 					ok := <-okCh
 					if ok {
-						reply.code = ReadWrite
+						reply.Code = ReadWrite
 					} else {
-						reply.code = ReadOnly
-						reply.err = "another user already has the console for read/write"
+						reply.Code = ReadOnly
+						reply.Err = "another user already has the console for read/write"
 						close(inCh)
 						inCh = nil
 					}
@@ -265,34 +265,21 @@ L:
 					break L
 				}
 			case Write:
-				if inCh == nil || closed(inCh) {
+				//if inCh == nil || closed(inCh) {
+				if inCh == nil {
 					// ignore write when we are not owner
 					log.Print("Write when we don't own the console.")
 				} else {
-					log.Print("Writing ", req.input, " into channel ", inCh)
-					inCh <- req.input
+					log.Print("Writing ", req.Input, " into channel ", inCh)
+					inCh <- req.Input
 					runtime.Gosched()
 				}
 			case Close:
 				break L
 			}
-			/* this doesn't work: once it is closed, it triggers the select repeatedly.
-			Need to be notified a different way. */
-			/*		case _ = <-inCh:
-					if closed(inCh) {
-						reply.code = ReadOnly
-						reply.err = "another user has stolen the console from you"
-
-						err := enc.Encode(reply)
-						if (err != nil) {
-							log.Print("connection ", c.rw, ", failed to send lost reply: ", err)
-							break L
-						}
-					}
-			*/
 		case ev := <-evCh:
-			reply.code = Data
-			reply.data = ev.data
+			reply.Code = Data
+			reply.Data = ev.data
 			err := enc.Encode(reply)
 			if err != nil {
 				log.Print("connection ", c.rw, ", failed to send data: ", err)
@@ -305,7 +292,8 @@ L:
 	close(evCh)
 
 	// tell the consoleManager we won't be writing any more
-	if inCh != nil && !closed(inCh) {
+	//if inCh != nil && !closed(inCh) {
+	if inCh != nil {
 		close(inCh)
 	}
 
@@ -370,7 +358,7 @@ func (m *consoleManager) run() {
 
 	// keep trying to reconnect
 	for reconnect {
-		c, err := net.Dial("tcp", "", m.addr)
+		c, err := net.Dial("tcp", m.addr)
 		if err != nil {
 			log.Print("Failed to connect to ", m.cons, ": ", err)
 			time.Sleep(10 * 1e9)
@@ -392,8 +380,8 @@ func (m *consoleManager) run() {
 				break L
 			case _ = <-connDead:
 				break L
-			case req := <-m.reqCh:
-				if closed(m.reqCh) {
+			case req, closed := <-m.reqCh:
+				if !closed {
 					break L
 				}
 				if req.cmd == conListen {
@@ -414,17 +402,17 @@ func (m *consoleManager) run() {
 				} else {
 					log.Print("Ignoring unknown request command: ", req.cmd)
 				}
-			case data := <-m.dataCh:
-				if closed(m.dataCh) {
+			case data, closed := <-m.dataCh:
+				if !closed {
 					break L
 				}
 				// multicast the data to the listeners
 				for l := listeners; l != nil; l = l.next {
-					if closed(l.ch) {
+					//if closed(l.ch) {
 						// TODO: need to remove this node from the list, not just mark nil
-						l.ch = nil
-						log.Print("Marking listener ", l, " no longer active.")
-					}
+					//	l.ch = nil
+					//	log.Print("Marking listener ", l, " no longer active.")
+					//}
 					if l.ch != nil {
 						select {
 							case l.ch <- consoleEvent{data}:
@@ -474,7 +462,7 @@ const (
 func (m *consoleManager) recv() {
 	var st iacState = None
 
-	file, err := os.Open(m.cons, os.O_WRONLY|os.O_CREAT|os.O_APPEND, 0600)
+	file, err := os.OpenFile(m.cons, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
 		log.Printf("Error opening log file %s: %v", file, err)
 		return

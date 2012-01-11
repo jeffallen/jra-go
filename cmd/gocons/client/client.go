@@ -27,9 +27,9 @@ const (
 )
 
 type connReq struct {
-	cmd   connCmd
-	name  string
-	input []byte
+	Cmd   connCmd
+	Name  string
+	Input []byte
 }
 
 type connReplyCode int
@@ -43,9 +43,9 @@ const (
 )
 
 type connReply struct {
-	code connReplyCode
-	err  string
-	data []byte
+	Code connReplyCode
+	Err  string
+	Data []byte
 }
 
 func debug(arg ...interface{}) {
@@ -57,7 +57,7 @@ func debug(arg ...interface{}) {
 }
 
 func take(enc *gob.Encoder, ts connCmd) {
-	req := &connReq{cmd: ts}
+	req := &connReq{Cmd: ts}
 	// we ignore the error because there's not much to do; the
 	// main loop will figure it out
 	_ = enc.Encode(req)
@@ -93,7 +93,7 @@ func main() {
 		return
 	}
 
-	c, err := net.Dial("tcp", "", "localhost:1234")
+	c, err := net.Dial("tcp", "localhost:1234")
 	if err != nil {
 		log.Print("Could not connect: ", err)
 		return
@@ -101,8 +101,8 @@ func main() {
 	enc := gob.NewEncoder(c)
 
 	req := new(connReq)
-	req.cmd = Listen
-	req.name = cons
+	req.Cmd = Listen
+	req.Name = cons
 	err = enc.Encode(req)
 	if err != nil {
 		log.Print("Could not write request: ", err)
@@ -124,10 +124,10 @@ L:
 			break
 		}
 
-		debug("Reply code: ", reply.code)
-		switch reply.code {
+		debug("Reply code: ", reply.Code)
+		switch reply.Code {
 		default:
-			log.Print("Bad reply from server: ", reply.code, "\r")
+			log.Print("Bad reply from server: ", reply.Code, "\r")
 			break
 		case Ok:
 			// nothing
@@ -138,10 +138,10 @@ L:
 			fmt.Fprintf(os.Stdout, " [read-write] ")
 			readwrite = true
 		case Err:
-			log.Print("Error from server: ", reply.err, "\r")
+			log.Print("Error from server: ", reply.Err, "\r")
 			break L
 		case Data:
-			os.Stdout.Write(reply.data[:])
+			os.Stdout.Write(reply.Data[:])
 		}
 	}
 	log.Print("Disconnecting.\r")
@@ -169,7 +169,7 @@ func readinput(c net.Conn, enc *gob.Encoder) {
 		}
 
 		if readwrite {
-			req := &connReq{cmd: Write, input: buf[:]}
+			req := &connReq{Cmd: Write, Input: buf[:]}
 			err = enc.Encode(req)
 			if err != nil {
 				log.Print("Failed to write on connection.")
@@ -279,7 +279,7 @@ func getTermios(tty *os.File) (termios, os.Error) {
 	if errno != 0 {
 		return termios{}, os.NewSyscallError("SYS_IOCTL", int(errno))
 	} else if r1 != 0 {
-		return termios{}, os.ErrorString(fmt.Sprintf("SYS_IOCTL returned %d", r1))
+		return termios{}, os.NewError(fmt.Sprintf("SYS_IOCTL returned %d", r1))
 	}
 	return t, nil
 }
@@ -289,12 +289,10 @@ func setTermios(tty *os.File, src termios) os.Error {
 		uintptr(tty.Fd()), uintptr(TCSETS),
 		uintptr(unsafe.Pointer(&src)))
 
-	if err := os.NewSyscallError("SYS_IOCTL", int(errno)); err != nil {
-		return err
-	}
-
-	if r1 != 0 {
-		return os.ErrorString("Error")
+	if errno != 0 {
+		return os.NewSyscallError("SYS_IOCTL", int(errno))
+	} else if r1 != 0 {
+		return os.NewError(fmt.Sprintf("SYS_IOCTL returned %d", r1))
 	}
 
 	return nil
