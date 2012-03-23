@@ -1,24 +1,26 @@
 package main
 
 import (
+	"code.google.com/p/jra-go/linkio"
 	"fmt"
-	"http"
 	"io"
-	"jra-go.googlecode.com/hg/linkio"
 	"log"
 	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
-	"url"
+	"time"
 )
 
 var gLink *linkio.Link
 
 func init() {
-	gLink = linkio.NewLink(56 /* kbps */ )
+	gLink = linkio.NewLink(56 /* kbps */)
 }
 
 func loghit(r *http.Request, code int) {
-	log.Printf("%v %v %v", r.Method, r.RawURL, code)
+	log.Printf("%v %v %v", r.Method, r.RequestURI, code)
 }
 
 // Given a string of the form "host", "host:port", or "[ipv6::address]:port",
@@ -45,15 +47,13 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	oreq.Header = creq.Header
 	oreq.Method = creq.Method
 
-	ourl, err := url.Parse(creq.RawURL)
+	ourl, err := url.Parse(creq.RequestURI)
 	if err != nil {
 		http.Error(cwr, fmt.Sprint("Malformed request", err),
 			http.StatusNotImplemented)
 		loghit(creq, http.StatusNotImplemented)
 		return
 	}
-	// don't set RawURL, or else the request will be written with only
-	// it, instead of using the URL.Path as we want (see (* http.Request)Write)
 	oreq.URL = ourl
 
 	if oreq.URL.Scheme != "http" {
@@ -83,12 +83,12 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	}
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
-		http.Error(cwr, err.String(), http.StatusGatewayTimeout)
+		http.Error(cwr, err.Error(), http.StatusGatewayTimeout)
 		loghit(creq, http.StatusGatewayTimeout)
 		return
 	}
-	c.SetReadTimeout(3 * 1e9)
-	cc := http.NewClientConn(c, nil)
+	c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	cc := httputil.NewClientConn(c, nil)
 
 	// debug
 	//dbg, err := http.DumpRequest(oreq, true)
@@ -96,14 +96,14 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 
 	err = cc.Write(oreq)
 	if err != nil {
-		http.Error(cwr, err.String(), http.StatusGatewayTimeout)
+		http.Error(cwr, err.Error(), http.StatusGatewayTimeout)
 		loghit(creq, http.StatusGatewayTimeout)
 		return
 	}
 
 	oresp, err := cc.Read(oreq)
-	if err != nil && err != http.ErrPersistEOF {
-		http.Error(cwr, err.String(), http.StatusGatewayTimeout)
+	if err != nil && err != httputil.ErrPersistEOF {
+		http.Error(cwr, err.Error(), http.StatusGatewayTimeout)
 		loghit(creq, http.StatusGatewayTimeout)
 		return
 	}
@@ -131,7 +131,7 @@ func main() {
 	proxy := NewProxy()
 	err := http.ListenAndServe("[::]:12345", proxy)
 	if err != nil {
-		log.Fatal("ListenAndServe: ", err.String())
+		log.Fatal("ListenAndServe: ", err.Error())
 	}
 }
 

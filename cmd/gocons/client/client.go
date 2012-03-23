@@ -6,14 +6,14 @@
 package main
 
 import (
-	"os"
+	"encoding/gob"
+	"exp/terminal"
 	"flag"
 	"fmt"
-	"syscall"
-	"unsafe"
+	"io"
 	"log"
 	"net"
-	"gob"
+	"os"
 )
 
 type connCmd int
@@ -75,23 +75,17 @@ func main() {
 		log.Fatal("Must give a console name as the last argument.")
 	}
 
-	oldterm, err := getTermios(os.Stdin)
+	state, err := terminal.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		log.Fatal("get termios: ", err)
+		log.Fatal("MakeRaw: ", err)
 	}
 
 	// put it back the way we found it when we exit
 	defer func() {
-		_ = setTermios(os.Stdin, oldterm)
+		_ = terminal.Restore(int(os.Stdin.Fd()), state)
 		// clean up cursor position
 		fmt.Print("\r")
 	}()
-
-	err = tty_raw(os.Stdin, oldterm)
-	if err != nil {
-		log.Print("tty raw: ", err)
-		return
-	}
 
 	c, err := net.Dial("tcp", "localhost:1234")
 	if err != nil {
@@ -118,7 +112,7 @@ L:
 	for {
 		err := dec.Decode(reply)
 		if err != nil {
-			if err != os.EOF {
+			if err != io.EOF {
 				log.Print("recv error: ", err)
 			}
 			break
@@ -229,91 +223,6 @@ Loop:
 		c.Close()
 	}
 	return
-}
-
-// from http://go.pastie.org/813153, then hacked up to work like I want
-
-// termios types
-type cc_t byte
-type speed_t uint
-type tcflag_t uint
-
-// termios constants
-const (
-	BRKINT = tcflag_t(0000002)
-	ICRNL  = tcflag_t(0000400)
-	INPCK  = tcflag_t(0000020)
-	ISTRIP = tcflag_t(0000040)
-	IXON   = tcflag_t(0002000)
-	OPOST  = tcflag_t(0000001)
-	CS8    = tcflag_t(0000060)
-	ECHO   = tcflag_t(0000010)
-	ICANON = tcflag_t(0000002)
-	IEXTEN = tcflag_t(0100000)
-	ISIG   = tcflag_t(0000001)
-	VTIME  = tcflag_t(5)
-	VMIN   = tcflag_t(6)
-)
-
-const NCCS = 32
-
-type termios struct {
-	c_iflag, c_oflag, c_cflag, c_lflag tcflag_t
-	c_line                             cc_t
-	c_cc                               [NCCS]cc_t
-	c_ispeed, c_ospeed                 speed_t
-}
-
-// ioctl constants
-const (
-	TCGETS = 0x5401
-	TCSETS = 0x5402
-)
-
-func getTermios(tty *os.File) (termios, os.Error) {
-	t := termios{}
-	r1, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
-		uintptr(tty.Fd()), uintptr(TCGETS),
-		uintptr(unsafe.Pointer(&t)))
-
-	if errno != 0 {
-		return termios{}, os.NewSyscallError("SYS_IOCTL", int(errno))
-	} else if r1 != 0 {
-		return termios{}, os.NewError(fmt.Sprintf("SYS_IOCTL returned %d", r1))
-	}
-	return t, nil
-}
-
-func setTermios(tty *os.File, src termios) os.Error {
-	r1, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
-		uintptr(tty.Fd()), uintptr(TCSETS),
-		uintptr(unsafe.Pointer(&src)))
-
-	if errno != 0 {
-		return os.NewSyscallError("SYS_IOCTL", int(errno))
-	} else if r1 != 0 {
-		return os.NewError(fmt.Sprintf("SYS_IOCTL returned %d", r1))
-	}
-
-	return nil
-}
-
-func tty_raw(tty *os.File, current termios) os.Error {
-	raw := current
-
-	raw.c_iflag &= ^(BRKINT | ICRNL | INPCK | ISTRIP | IXON)
-	raw.c_oflag &= ^(OPOST)
-	raw.c_cflag |= (CS8)
-	raw.c_lflag &= ^(ECHO | ICANON | IEXTEN | ISIG)
-
-	raw.c_cc[VMIN] = 1
-	raw.c_cc[VTIME] = 0
-
-	if err := setTermios(tty, raw); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // vim:ts=2

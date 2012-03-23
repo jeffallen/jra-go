@@ -8,7 +8,6 @@ package linkio
 
 import (
 	"io"
-	"os"
 	"time"
 )
 
@@ -57,7 +56,7 @@ func NewLink(kbps int) (l *Link) {
 	go func() {
 		for lr := range l.in {
 			// bits * nanosec/bit = nano to wait
-			delay := int64(lr.bytes*8) * l.speed
+			delay := time.Duration(int64(lr.bytes*8) * l.speed)
 			time.Sleep(delay)
 			lr.done <- true
 		}
@@ -84,7 +83,7 @@ func min(a, b int) int {
 }
 
 // Satisfies interface io.Reader.
-func (l *LinkReader) Read(buf []byte) (n int, err os.Error) {
+func (l *LinkReader) Read(buf []byte) (n int, err error) {
 	// Read small chunks at a time, even if they ask for more,
 	// preventing one LinkReader from saturating the simulated link.
 	// 1500 is the MTU for Ethernet, i.e. a likely maximum packet

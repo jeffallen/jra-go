@@ -6,14 +6,15 @@
 package main
 
 import (
-	"os"
-	"net"
-	"log"
-	"time"
-	"gob"
+	"encoding/gob"
+	"encoding/json"
 	"flag"
+	"io"
+	"log"
+	"net"
+	"os"
 	"runtime"
-	"json"
+	"time"
 )
 
 var managers map[string]*consoleManager
@@ -118,7 +119,7 @@ func fakeserver(ready chan bool) {
 				var buf [1]byte
 				n, err := rw.Read(buf[:])
 				if err != nil || n != 1 {
-					log.Print("(fake) read: ", e)
+					log.Print("(fake) read error: ", err)
 					break
 				}
 				// just echo their typing back
@@ -177,7 +178,7 @@ func (c *connection) decoder(ch chan connReq) {
 		req := new(connReq)
 		err := dec.Decode(req)
 		if err != nil {
-			if err != os.EOF {
+			if err != io.EOF {
 				log.Print("connection ", c.rw, ", could not decode: ", err)
 			}
 			break
@@ -472,7 +473,7 @@ func (m *consoleManager) recv() {
 
 		n, err := m.c.Read(buf[:])
 		if err != nil {
-			if err != os.EOF {
+			if err != io.EOF {
 				log.Print("Error reading from net: ", err)
 			}
 			break
@@ -539,7 +540,7 @@ func (m *consoleManager) recv() {
 func (m *consoleManager) send() {
 	var buf [512]byte
 
-	m.c.SetWriteTimeout(1e9)
+	m.c.SetWriteDeadline(time.Now().Add(1 * time.Second))
 
 	for req := range m.inputCh {
 		// for each write, out starts as an empty slice of the buffer,
@@ -554,6 +555,7 @@ func (m *consoleManager) send() {
 			out = append(out, req.data[i])
 		}
 
+		log.Print("Sending ", len(out), " bytes into m.c")
 		x, err := m.c.Write(out[:])
 		if err != nil {
 			log.Print("Error writing to connection: ", err)

@@ -6,7 +6,7 @@ package linkio
 
 import (
 	"bytes"
-	"os"
+	"io"
 	"testing"
 )
 
@@ -15,11 +15,11 @@ func TestOne(t *testing.T) {
 	var y [1000]byte
 	buf := bytes.NewBuffer(y[:])
 
-	lr := NewLink(30 /* kbps */ ).NewLinkReader(buf)
+	lr := NewLink(30 /* kbps */).NewLinkReader(buf)
 	for {
 		var x [1024]byte
 		n, err := lr.Read(x[:])
-		if err == os.EOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
