@@ -34,20 +34,27 @@ func TestAdds(t *testing.T) {
 	}
 }
 
-func BenchmarkAddGo(b *testing.B) {
-	one := Bcd(1)
-	var x Bcd
-	for i := uint(0); i < 9998; i++ {
-		x = AddGo(ToBcd(i), one)
+var bcds []Bcd
+
+func init() {
+	bcds = make([]Bcd, 20)
+	for i := 0; i < len(bcds); i++ {
+		bcds[i] = Bcd(uint(i))
 	}
-	b.Logf("last x is %d", x.UInt())
+}
+
+func BenchmarkAddGo(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		j := i % len(bcds)
+		k := (i+1) % len(bcds)
+		_ = AddGo(bcds[j], bcds[k])
+	}
 }
 
 func BenchmarkAddNative(b *testing.B) {
-	one := Bcd(1)
-	i := Bcd(0)
-	for ii := uint(0); ii < 9998; ii++ {
-		i = AddNative(i, one)
+	for i := 0; i < b.N; i++ {
+		j := i % len(bcds)
+		k := (i+1) % len(bcds)
+		_ = AddNative(bcds[j], bcds[k])
 	}
-	b.Logf("last i is %d", i.UInt())
 }
