@@ -1,0 +1,12 @@
+immreg 0 2
+immreg 72 1
+regmem 1 2
+immreg 69 1
+regmem 1 2
+immreg 76 1
+regmem 1 2
+immreg 76 1
+regmem 1 2
+immreg 79 1
+regmem 1 2
+halt
