@@ -28,6 +28,7 @@ const (
 	InsCall
 	InsReturn
 	InsWait
+	InsXorReg
 )
 
 type Address uint16
@@ -114,14 +115,14 @@ func (p *Processor) LoadMem(program []byte, where Address) {
 	}
 }
 
-func (p *Processor) trace(args ...interface{}) {
+func (p *Processor) trace(msg string) {
 	if p.traceName != "" {
-		p.logger.Log(p.traceName, args)
+		p.logger.Log(fmt.Sprintf("%s: %s", p.traceName, msg))
 	}
 }
 
 type Logger interface {
-	Log(args ...interface{})
+	Log(msg string)
 }
 
 func (p *Processor) Trace(name string, l Logger) {
@@ -159,8 +160,9 @@ func (p *Processor) StepN(steps int) bool {
 // Run the processor for one step. If the processor does not halt in this
 // step, returns true.
 func (p *Processor) Step() bool {
-	p.trace(fmt.Sprintf("step at ip: %v", p.Reg[0]))
 	ip := p.Reg[0]
+	// ip(original) for logging
+	ipo := ip
 	instruction := Instruction(p.Peek(ip))
 	ip++
 
@@ -169,13 +171,14 @@ func (p *Processor) Step() bool {
 		panic("unknown instruction")
 	case InsNop:
 		// nothing to do
+		p.trace(fmt.Sprintf("%d: nop", ipo))
 	case InsMemReg:
 		from := p.Peek(ip)
 		ip++
 		where := p.getReg(from)
 		to := p.Peek(ip)
 		ip++
-		p.trace(fmt.Sprintf("Load from reg %v(->%v) to reg %v", from, where, to))
+		p.trace(fmt.Sprintf("%d: memreg %d %d", ipo, from, to))
 		p.Reg[to] = Address(p.Peek(where))
 		if to == 0 {
 			// do not do final Reg[0]=ip if this instruction is a goto
@@ -187,14 +190,14 @@ func (p *Processor) Step() bool {
 		to := p.Peek(ip)
 		ip++
 		where := p.getReg(to)
-		p.trace(fmt.Sprintf("Store from reg %v(%v) to reg %v(->%v)", from, p.getReg(from), to, where))
+		p.trace(fmt.Sprintf("%d: regmem %d %d", ipo, from, to))
 		p.Poke(where, byte(p.Reg[from]&0xff))
 	case InsImmReg:
 		imm := p.getAddress(ip)
 		ip = ip + 2
 		to := p.Peek(ip)
 		ip++
-		p.trace(fmt.Sprintf("Immediate %v to reg %v", imm, to))
+		p.trace(fmt.Sprintf("%d: immreg %d %d", ipo, imm, to))
 		p.Reg[to] = imm
 		if to == 0 {
 			// do not do final Reg[0]=ip if this instruction is a goto
@@ -207,7 +210,7 @@ func (p *Processor) Step() bool {
 		ip++
 		b := p.getReg(p.Peek(ip))
 		ip++
-		p.trace(fmt.Sprintf("Goto %v if %v == %v", where, a, b))
+		p.trace(fmt.Sprintf("%d: gotoifequal %d %d %d", ipo, where, a, b))
 		if a == b {
 			p.Reg[0] = where
 			// do not do final reg[0]=ip
@@ -218,9 +221,26 @@ func (p *Processor) Step() bool {
 		ip++
 		if int(which) < len(p.Reg) {
 			p.Reg[which]++
+		} else {
+			panic("bad register")
 		}
-		p.trace(fmt.Sprintf("Increment reg %v", which))
+		p.trace(fmt.Sprintf("%d: increg %d", ipo, which))
 		if which == 0 {
+			// do not do final reg[0]=ip
+			return true
+		}
+	case InsXorReg:
+		b := p.Peek(ip)
+		ip++
+		a := p.Peek(ip)
+		ip++
+		if int(a) < len(p.Reg) && int(b) < len(p.Reg) {
+			p.Reg[a] = p.Reg[a] ^ p.Reg[b]
+		} else {
+			panic("bad register")
+		}
+		p.trace(fmt.Sprintf("%d: xorreg %d %d", ipo, a, b))
+		if a == 0 {
 			// do not do final reg[0]=ip
 			return true
 		}
@@ -232,19 +252,21 @@ func (p *Processor) Step() bool {
 		p.Poke(stack, byte((ip>>8)&0xff))
 		p.Poke(stack+1, byte(ip&0xff))
 		p.Reg[0] = where
-		p.trace(fmt.Sprintf("Call %v (sp=%v)", where, stack))
+		p.trace(fmt.Sprintf("%d: call %d # new top of stack: %d", ipo, where, stack))
 		return true
 	case InsReturn:
 		stack := p.Reg[9]
 		to := p.getAddress(stack)
 		p.Reg[9] += 2
 		p.Reg[0] = to
-		p.trace(fmt.Sprintf("Return (sp=%v)", stack))
+		p.trace(fmt.Sprintf("%d: return # new top of stack: %d", ipo, p.Reg[9]))
 		return true
 	case InsWait:
 		// wait until signaled via a call to p.Signal()
+		p.trace(fmt.Sprintf("%d: wait", ipo))
 		_ = <- p.channel
 	case InsHalt:
+		p.trace(fmt.Sprintf("%d: halt", ipo))
 		p.Reg[0] = ip
 		return false
 	}
@@ -358,6 +380,12 @@ func Assemble(r io.Reader) (res []byte) {
 			res = append(res, byte(InsIncReg))
 			res = append(res, byte(getAddr(tok[1], labels) & 0xff))
 			here += 2
+		case "xorreg":
+			need(tok, 2)
+			res = append(res, byte(InsXorReg))
+			res = append(res, byte(getAddr(tok[1], labels) & 0xff))
+			res = append(res, byte(getAddr(tok[2], labels) & 0xff))
+			here += 3
 		case "call":
 			need(tok, 1)
 			res = append(res, byte(InsCall))

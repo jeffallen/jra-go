@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
@@ -16,21 +17,20 @@ import (
 const intro = `
 It's a moonless night, you're lucky. Cutting your way through 
 the barbed wire fence, you've made your way into the compound.
-The front is brightly lit, but you've already noticed that the
-rear is much darker. Your target entry point is up ahead,
-just a 10 meter sprint across open ground: a door and the control
-panel next to it with its slowly brinking red LED. You concentrate
-on the red dot and make a run for it.
+Your target up ahead, just a 10 meter sprint across open ground:
+a service door and the control panel next to it with its slowly
+brinking red LED. You concentrate on the red dot and make a
+run for it.
 
 Kneeling beneath the control panel, you unscrew the cover and
-find it right where they told you to look for it, the DIAG_IN
-port. You hook up TX, RX, and ground then boot up your portable
+find it right where they told you to look for it, the DIAG_IO
+port. You hook up Tx, Rx, and ground then boot up your portable
 terminal. Propping your back against the wall, you settle in
 for a little hacking...
 `
 
 const help = `
-You have successfully connected your teletype to the DIAG_IN port
+You have successfully connected your terminal to the DIAG_IO port
 of the door control computer. You can send the following commands
 to its debugger:
 
@@ -52,21 +52,56 @@ to its debugger:
 
 type logger struct{}
 
-func (l logger) Log(args ...interface{}) {
-	fmt.Println(args)
+func (l logger) Log(msg string) {
+	fmt.Println(msg)
 }
 
 var havingFun *bool = flag.Bool("havingFun", true, "set this if you're not having fun anymore")
 var assemble *string = flag.String("assemble", "", "program to assemble")
+var encode *string = flag.String("encode", "", "string to hide")
 
 func main() {
+	// panic handler
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Error:", r)
+		}
+	}()
+
 	// override the normal usage to prevent them from easily seeing
 	// the havingFun flag (still might see it with strings, good on 'em)
-	flag.Usage = func () { fmt.Fprintf(os.Stderr, "Solve this clue. Duh.\n") }
+	flag.Usage = func() { fmt.Fprintf(os.Stderr, "Solve this clue. Duh.\n") }
 	flag.Parse()
 
 	if *assemble != "" {
-		fmt.Printf("%#v\n", jpu.Assemble(strings.NewReader(*assemble)))
+		fmt.Printf("load 100 ")
+		res := jpu.Assemble(strings.NewReader(*assemble))
+		for _,x := range res {
+			fmt.Printf("%d ", x)
+		}
+		fmt.Println("")
+		return
+	}
+
+	if *encode != "" {
+		in := []byte(*encode)
+		mask := make([]byte, len(in))
+		text := make([]byte, len(in))
+
+		_, _ = rand.Read(mask)
+		for i, _ := range in {
+			// don't leave any bytes unchanged, in case
+			if mask[i] == 0 {
+				mask[i] = 0xaa
+			}
+			text[i] = mask[i] ^ in[i]
+		}
+		fmt.Printf("mask := %#v\n", mask)
+		fmt.Printf("text := %#v\n", text)
+		for i, _ := range in {
+			text[i] = mask[i] ^ text[i]
+		}
+		fmt.Printf("//check: %s\n", string(text))
 		return
 	}
 
@@ -79,29 +114,27 @@ func main() {
 	// jpu2's location 0 is a normal output port for writing the results
 
 	p1 := []byte{
-	// init:
-	/*
-		byte(InsImmReg), 0, 1, 5, // r5 holds address of the output port
-		byte(InsImmReg), 0, 2, 2,	// write to 2 to signal the other guy
-		byte(InsImmReg), 0, 0, 8, // for compare to end of string
-		byte(InsImmReg), 0, 200, 3, // r3 = start of message
+		// init:
+		byte(jpu.InsImmReg), 0, 1, 5, // r5 holds address of the output port
+		byte(jpu.InsImmReg), 0, 2, 2, // write to 2 to signal the other guy
+		byte(jpu.InsImmReg), 0, 0, 8, // for compare to end of string
+		byte(jpu.InsImmReg), 0, 200, 3, // r3 = start of message
 		// top: wait until signaled to send
-		byte(InsWait),
+		byte(jpu.InsWait),
 		// read next byte of message (*r3)
-		byte(InsMemReg), 3, 4,
+		byte(jpu.InsMemReg), 3, 4,
 		// write to output, incr, signal
-		byte(InsRegMem), 4, 5,
-		byte(InsIncReg), 3,
-		byte(InsRegMem), 2, 2, // signal jpu2
+		byte(jpu.InsRegMem), 4, 5,
+		byte(jpu.InsIncReg), 3,
+		byte(jpu.InsRegMem), 2, 2, // signal jpu2
 		// if byte just sent is zero, reset to start of string (top - 4)
-		byte(InsGotoIfEqual), 0, 112, 4, 8,
+		byte(jpu.InsGotoIfEqual), 0, 112, 4, 8,
 		// otherwise loop without reset
-		byte(InsImmReg), 0, 116, 0,
-	*/
+		byte(jpu.InsImmReg), 0, 116, 0,
 	}
 
 	logger := logger{}
-	jpu1 := jpu.NewProcessor(300)
+	jpu1 := jpu.NewProcessor(1000)
 	jpu2 := jpu.NewProcessor(300)
 	if !*havingFun {
 		jpu1.Trace("  BigMC", logger)
@@ -138,10 +171,31 @@ func main() {
 
 	jpu1.LoadMem(p1, 100)
 	jpu1.Reg[0] = 100
-	jpu1.LoadMem([]byte("HELLO\000"), 200)
+
+	// use ./clue -encode="XXX" to make these (then add 0 terminators by hand)
+	mask := []byte{0x74, 0x92, 0xe7, 0x38, 0x24, 0}
+	maskIndex := 0
+	text := []byte{0x1c, 0xf7, 0x8b, 0x54, 0x4b, 0}
+	jpu1.LoadMem(text, 200)
+
+	// implement the key generator device for jpu2
+	jpu2.RegisterIn(func(where jpu.Address) (res byte) {
+		res = mask[maskIndex]
+		maskIndex++
+		if maskIndex > len(mask) {
+			maskIndex = 0
+		}
+		return
+	}, 3)
 
 	// start backend machine running indefinitely
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Error in BigMC:", r)
+			}
+		}()
+
 		for jpu1.Step() {
 		}
 	}()
@@ -153,19 +207,19 @@ func main() {
 	r := bufio.NewReader(os.Stdin)
 loop:
 	for {
+		// prompt and get input
 		fmt.Fprintf(os.Stdout, "> ")
 		cmd, err := r.ReadString('\n')
-
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			log.Fatal("Error:", err)
 		}
-		cmd = strings.TrimRight(cmd, "\n\r")
+
+		// process it
 		cmd = strings.ToLower(cmd)
-		cmd = strings.Replace(cmd, "\t", " ", -1)
-		tok := strings.Split(cmd, " ")
+		tok := strings.Fields(cmd)
 
 		switch tok[0] {
 		default:
@@ -189,7 +243,7 @@ loop:
 				a, _ := strconv.ParseInt(tok[1], 0, 16)
 				addr := jpu.Address(a)
 				for i := 2; i < len(tok); i++ {
-					val, err := strconv.ParseInt(tok[i], 0, 8)
+					val, err := strconv.ParseInt(tok[i], 0, 16)
 					if err == nil {
 						jpu2.Poke(addr, byte(val))
 						addr++
