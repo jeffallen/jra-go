@@ -1,0 +1,21 @@
+immreg 1 1
+immreg 2 2
+immreg 3 3
+immreg 0 8
+# signal "ready for you to write" and wait
+regmem 2 2
+wait
+# bring next mask byte in to 5
+memreg 3 5
+# bring next messag byte into 4
+memreg 1 4
+# stop if mesage is done
+# (140 = past the end of program, mem is 0-initialized, 0 = halt)
+gotoifequal 140 4 8
+# decrypt (mask[i] ^ message[i])
+xorreg 5 4
+# write decrypted message to output
+regmem 4 8
+# loop
+immreg 116 0
+halt
