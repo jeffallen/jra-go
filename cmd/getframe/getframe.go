@@ -38,8 +38,10 @@ func dumpAll(d ebml.Master, ind string) {
 		case ebml.Segment:
 			log.Printf("%sSegment", ind)
 			dumpAll(t.Master, ind + "  ")
+		case ebml.MetaSeek:
+			log.Printf("%sMetaSeek (%d seeks)", ind, len(t.Seeks))
 		case ebml.Unknown:
-			log.Printf("%sUnknown EBML element: %v", ind, t.Id)
+			log.Printf("%sUnknown EBML element: %x", ind, t.Id)
 		default:
 			log.Printf("%sUnknown element type: %T", ind, element)
 		}
