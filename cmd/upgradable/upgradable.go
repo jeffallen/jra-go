@@ -101,14 +101,14 @@ func UpgradeServer(w http.ResponseWriter, req *http.Request) {
 	var sig signal
 
 	tl := theListener.(*net.TCPListener)
-	fd := tl.GetFD()
+	fd, _ := tl.File()
 
 	// net/fd.go marks all sockets as close on exec, so we need to undo
 	// that before we start the child, so that the listen FD survives
 	// the fork/exec
-	syscall.NoCloseOnExec(fd)
+	syscall.NoCloseOnExec(fd.Fd())
 
-	cmd := exec.Command("./upgradable", "-listenFD", fmt.Sprintf("%d", fd))
+	cmd := exec.Command("./upgradable", "-listenFD", fmt.Sprintf("%d", fd.Fd()))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -135,7 +135,8 @@ func main() {
 	server := &http.Server{Addr: ":8000"}
 	if *listenFD != 0 {
 		log.Print("Listening to existing fd ", *listenFD)
-		theListener, err = net.NewTCPListener(*listenFD)
+		f := os.NewFile(uintptr(*listenFD), "listen socket")
+		theListener, err = net.FileListener(f)
 	} else {
 		log.Print("Listening on a new fd")
 		theListener, err = net.Listen("tcp", server.Addr)
