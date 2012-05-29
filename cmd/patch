@@ -1,0 +1,47 @@
+This patch to the Go standard libraries is required to be
+able to compile upgradable.
+
+It adds a way to make a new TCPListener with an existing file descriptor
+and also adds a convenience function to turn close-on-exec off for
+a given FD.
+
+Apply with "cd $GOROOT; patch -p0 < patch"
+
+diff -r 920e9d1ffd1f src/pkg/net/tcpsock_posix.go
+--- a/src/pkg/net/tcpsock_posix.go	Wed Mar 28 23:41:59 2012 +1100
++++ b/src/pkg/net/tcpsock_posix.go	Tue May 29 12:52:20 2012 +0200
+@@ -361,3 +361,23 @@
+ // It is the caller's responsibility to close f when finished.
+ // Closing c does not affect f, and closing f does not affect c.
+ func (l *TCPListener) File() (f *os.File, err error) { return l.fd.dup() }
++
++// Given the number of a system file descriptor, make a new
++// TCPListener on it.
++func NewTCPListener(fd int) (l *TCPListener, err error) {
++	var nfd *netFD
++	nfd, err = newFD(fd, syscall.AF_INET, syscall.SOCK_STREAM, "tcp")
++	if err == nil {
++		l = new(TCPListener)
++		l.fd = nfd
++	}
++	return
++}
++
++// Returns the file descriptor number of the underlying listen
++// socket. This file descriptor should only be manipulated via
++// the net library (i.e. passed into NewTCPListener and then
++// using Accept(), etc on the TCPListener).
++func (l *TCPListener) GetFD() int {
++	return l.fd.sysfd
++}
+diff -r 920e9d1ffd1f src/pkg/syscall/exec_unix.go
+--- a/src/pkg/syscall/exec_unix.go	Wed Mar 28 23:41:59 2012 +1100
++++ b/src/pkg/syscall/exec_unix.go	Tue May 29 12:52:20 2012 +0200
+@@ -75,6 +75,7 @@
+ }
+ 
+ func CloseOnExec(fd int) { fcntl(fd, F_SETFD, FD_CLOEXEC) }
++func NoCloseOnExec(fd int) { fcntl(fd, F_SETFD, ^FD_CLOEXEC) }
+ 
+ func SetNonblock(fd int, nonblocking bool) (err error) {
+ 	flag, err := fcntl(fd, F_GETFL, 0)
