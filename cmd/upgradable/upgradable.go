@@ -106,7 +106,7 @@ func UpgradeServer(w http.ResponseWriter, req *http.Request) {
 	// net/fd.go marks all sockets as close on exec, so we need to undo
 	// that before we start the child, so that the listen FD survives
 	// the fork/exec
-	syscall.NoCloseOnExec(fd.Fd())
+	noCloseOnExec(fd.Fd())
 
 	cmd := exec.Command("./upgradable", "-listenFD", fmt.Sprintf("%d", fd.Fd()))
 	cmd.Stdout = os.Stdout
@@ -164,3 +164,22 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
+// These are here because there is no API in syscall for turning OFF
+// close-on-exec (yet).
+
+// from syscall/zsyscall_linux_386.go, but it seems like it might work
+// for other platforms too.
+func fcntl(fd int, cmd int, arg int) (val int, err error) {
+        r0, _, e1 := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), uintptr(cmd), uintptr(arg))
+        val = int(r0)
+        if e1 != 0 {
+                err = e1
+        }
+        return
+}
+
+func noCloseOnExec(fd uintptr) {
+	fcntl(int(fd), syscall.F_SETFD, ^syscall.FD_CLOEXEC)
+}
+
