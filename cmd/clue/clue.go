@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	//"crypto/rand"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"code.google.com/p/jra-go/jpu"
 )
@@ -19,7 +20,7 @@ It's a moonless night, you're lucky. Cutting your way through
 the barbed wire fence, you've made your way into the compound.
 Your target up ahead, just a 10 meter sprint across open ground:
 a service door and the control panel next to it with its slowly
-brinking red LED. You concentrate on the red dot and make a
+blinking red LED. You concentrate on the red dot and make a
 run for it.
 
 Kneeling beneath the control panel, you unscrew the cover and
@@ -44,10 +45,27 @@ to its debugger:
 		Set register x to y
 	step
 		Run one step
-	run
+	go
 		Run until halt
+	init
+		Reinitialize (same as exit and run the program again)
 	exit
 		Disconnect the leads and scurry back through the fence.
+
+As a shortcut, you can type just the first letter of any command.
+`
+
+const dead = `
+The red LED stops blinking. Nothing you do changes anything, the
+door controller seems to be completely hung. No sense waiting around
+here. As you start to pack up your gear you hear the barking
+of approaching guard dogs from around the corner.
+
+You make a break for it, but the last thing you see as a
+dog sinks his teeth into your forearm is the blinding
+flashlight of the guard.
+
+GAME OVER.
 `
 
 type logger struct{}
@@ -56,18 +74,32 @@ func (l logger) Log(msg string) {
 	fmt.Println(msg)
 }
 
-var havingFun *bool = flag.Bool("havingFun", true, "set this if you're not having fun anymore")
-var assemble *string = flag.String("assemble", "", "program to assemble")
+const includeEncode = true
 
-//var encode *string = flag.String("encode", "", "string to hide")
+var restart *bool = flag.Bool("restart", false, "for internal use only")
+var havingFun *bool = flag.Bool("havingFun", false, "set this to false if you're not having fun anymore")
+var assemble *string = flag.String("assemble", "", "program to assemble")
+var encode *string
+
+func init() {
+	if includeEncode {
+		encode = flag.String("encode", "", "string to hide")
+	}
+}
 
 func main() {
 	// panic handler
+/*
 	defer func() {
 		if r := recover(); r != nil {
+			if r == "would deadlock" {
+				fmt.Print(dead)
+				os.Exit(1)
+			}
 			fmt.Println("Error:", r)
 		}
 	}()
+*/
 
 	// override the normal usage to prevent them from easily seeing
 	// the havingFun flag (still might see it with strings, good on 'em)
@@ -84,34 +116,32 @@ func main() {
 		return
 	}
 
-	/*
-		if *encode != "" {
-			in := []byte(*encode)
-			mask := make([]byte, len(in))
-			text := make([]byte, len(in))
+	if includeEncode && *encode != "" {
+		in := []byte(*encode)
+		mask := make([]byte, len(in))
+		text := make([]byte, len(in))
 
-			_, _ = rand.Read(mask)
-			for i, _ := range in {
-				for {
-					text[i] = mask[i] ^ in[i]
-					// do not allow zeros in the encrypted results
-					if text[i] == 0 {
-						mask[i]++
-						// go try again
-					} else {
-						break
-					}
+		_, _ = rand.Read(mask)
+		for i, _ := range in {
+			for {
+				text[i] = mask[i] ^ in[i]
+				// do not allow zeros in the encrypted results
+				if text[i] == 0 {
+					mask[i]++
+					// go try again
+				} else {
+					break
 				}
 			}
-			fmt.Printf("mask := %#v\n", mask)
-			fmt.Printf("text := %#v\n", text)
-			for i, _ := range in {
-				text[i] = mask[i] ^ text[i]
-			}
-			fmt.Printf("//check: %s\n", string(text))
-			return
 		}
-	*/
+		fmt.Printf("mask := %#v\n", mask)
+		fmt.Printf("text := %#v\n", text)
+		for i, _ := range in {
+			text[i] = mask[i] ^ text[i]
+		}
+		fmt.Printf("//check: %s\n", string(text))
+		return
+	}
 
 	// two machines, connected by an 8-bit buffer (both
 	// see it as location 1). When the front machine (jpu2)
@@ -144,8 +174,13 @@ func main() {
 	logger := logger{}
 	jpu1 := jpu.NewProcessor(1000)
 	jpu2 := jpu.NewProcessor(300)
+
+	// this is for the deadlock-preemption hack
+	jpu1.Peer = jpu2
+	jpu2.Peer = jpu1
+
 	if !*havingFun {
-		jpu1.Trace("  BigMC", logger)
+		jpu1.Trace(" BIGMAC", logger)
 	}
 	jpu2.Trace("DoorCtl", logger)
 
@@ -200,7 +235,8 @@ func main() {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Println("Error in BigMC:", r)
+				fmt.Println("Error in BIGMAC:", r)
+				os.Exit(0)
 			}
 		}()
 
@@ -208,8 +244,10 @@ func main() {
 		}
 	}()
 
-	fmt.Print(intro)
-	fmt.Print(help)
+	if !*restart {
+		fmt.Print(intro)
+		fmt.Print(help)
+	}
 
 	// process commands
 	r := bufio.NewReader(os.Stdin)
@@ -231,10 +269,23 @@ loop:
 
 		switch tok[0] {
 		default:
-			// print help for all unrecognized commands
+			fmt.Println("Command not recognized. Type help for a reminder.")
+		case "h":
+			fallthrough
+		case "help":
 			fmt.Print(help)
+		case "i":
+			fallthrough
+		case "init":
+			fmt.Println("Time warp: ...you settle in for a little hacking...")
+			syscall.Exec(os.Args[0], []string{os.Args[0], "-restart"}, nil)
+			panic("exec failed")
+		case "e":
+			fallthrough
 		case "exit":
 			break loop
+		case "d":
+			fallthrough
 		case "dump":
 			row := 15
 			for i := 0; i < jpu2.Top/row; i++ {
@@ -244,6 +295,8 @@ loop:
 				}
 				fmt.Println("")
 			}
+		case "l":
+			fallthrough
 		case "load":
 			if len(tok) < 2 {
 				fmt.Println("Load needs at least one arg.")
@@ -260,6 +313,8 @@ loop:
 					}
 				}
 			}
+		case "r":
+			fallthrough
 		case "reg":
 			if len(tok) > 1 {
 				if len(tok) != 3 {
@@ -284,15 +339,21 @@ loop:
 				}
 				fmt.Println("")
 			}
+		case "s":
+			fallthrough
 		case "step":
 			running := jpu2.Step()
 			if !running {
 				fmt.Println("Halted.")
 			}
-		case "run":
+		case "g":
+			fallthrough
+		case "go":
 			for jpu2.Step() {
 			}
 			fmt.Println("Halted.")
 		}
 	}
 }
+
+// ex:ts=2

@@ -5,16 +5,19 @@ import (
 	"io"
 )
 
+const BitsPerSample = 8
+type Sample8 uint8
+
 type Wav struct {
 	SamplesPerSecond int
 	Channels         int
-	BitsPerSample    int
-	Samples          [2][]int16 // maximum 2 channels
+	Samples          [maxChannels][]Sample8
 }
 
 const Mono = 0
 const Left = 0
 const Right = 1
+const maxChannels = 2
 
 func (w *Wav) Write(wr io.Writer) (err error) {
 	// TODO: need to calculate this
@@ -47,7 +50,7 @@ func (w *Wav) writeSamples(wr io.Writer) (err error) {
 		}
 	}
 
-	l := w.Channels * len(w.Samples[Left]) * w.BitsPerSample / 8
+	l := w.Channels * len(w.Samples[Left]) * BitsPerSample / 8
 	// The sample data must end on an even byte boundary
 	oneMore := false
 	if l & 1 != 0 {
@@ -60,11 +63,8 @@ func (w *Wav) writeSamples(wr io.Writer) (err error) {
 
 	for i := 0; i < len(w.Samples[Left]); i++ {
 		for ch := 0; ch < w.Channels; ch++ {
-			if w.BitsPerSample == 8 {
-				err = binary.Write(wr, binary.LittleEndian, uint8(w.Samples[ch][i]))
-			} else {
-				err = binary.Write(wr, binary.LittleEndian, int16(w.Samples[ch][i]))
-			}
+			// TODO: change this to a simple Write, since no byte swapping necessary
+			err = binary.Write(wr, binary.LittleEndian, w.Samples[ch][i])
 		}
 	}
 
@@ -77,11 +77,7 @@ func (w *Wav) writeSamples(wr io.Writer) (err error) {
 }
 
 func (w *Wav) writeFmt(wr io.Writer) (err error) {
-	if w.BitsPerSample != 16 && w.BitsPerSample != 8 {
-		panic("bad bits per sample")
-	}
-
-	blockAlign := w.Channels * w.BitsPerSample / 8
+	blockAlign := w.Channels * BitsPerSample / 8
 	bytesPerSecond := blockAlign * w.SamplesPerSecond
 
 	if _, err = wr.Write([]byte("fmt ")); err != nil { return }
@@ -117,7 +113,7 @@ func (w *Wav) writeFmt(wr io.Writer) (err error) {
 	}
 
 	// 2 bytes  <bits/sample>  // 8 or 16
-	if err = binary.Write(wr, binary.LittleEndian, int16(w.BitsPerSample)); err != nil {
+	if err = binary.Write(wr, binary.LittleEndian, int16(BitsPerSample)); err != nil {
 		return
 	}
 

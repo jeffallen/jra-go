@@ -45,6 +45,8 @@ type Processor struct {
 	traceName string
 	logger		Logger
 	channel		chan signal
+	Sleeping	bool	// this is a race condition waiting to happen, but it is a useful hack for the intended use: ../cmd/clue
+	Peer		*Processor
 }
 
 func NewProcessor(ram int) *Processor {
@@ -83,7 +85,8 @@ func (p *Processor) addressInRange(where Address) bool {
 
 func (p *Processor) Peek(where Address) byte {
 	if !p.addressInRange(where) {
-		panic("read out of range")
+		p.trace(fmt.Sprintf("read from address %d out of range", where))
+		return 0
 	}
 	if fp, exists := p.input[where]; exists {
 		return fp(where)
@@ -93,12 +96,13 @@ func (p *Processor) Peek(where Address) byte {
 
 func (p *Processor) Poke(where Address, what byte) {
 	if !p.addressInRange(where) {
-		panic("write out of range")
-	}
+		p.trace(fmt.Sprintf("write to address %d out of range", where))
+	} else {
 	if fp, exists := p.output[where]; exists {
 		fp(where, what)
 	} else {
 		p.mem[where] = what
+	}
 	}
 }
 
@@ -168,9 +172,8 @@ func (p *Processor) Step() bool {
 
 	switch instruction {
 	default:
-		panic("unknown instruction")
+		p.trace(fmt.Sprintf("%d: unknown (treated as nop)", ipo))
 	case InsNop:
-		// nothing to do
 		p.trace(fmt.Sprintf("%d: nop", ipo))
 	case InsMemReg:
 		from := p.Peek(ip)
@@ -264,7 +267,15 @@ func (p *Processor) Step() bool {
 	case InsWait:
 		// wait until signaled via a call to p.Signal()
 		p.trace(fmt.Sprintf("%d: wait", ipo))
+		// this is a race condition nightmare, and would never
+		// work outside of the restricted case of two peers
+		// as we are doing in ../cmd/clue
+		p.Sleeping = true
+		if p.Peer != nil && p.Peer.Sleeping {
+			panic("would deadlock")
+		}
 		_ = <- p.channel
+		p.Sleeping = false
 	case InsHalt:
 		p.trace(fmt.Sprintf("%d: halt", ipo))
 		p.Reg[0] = ip
