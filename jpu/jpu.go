@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 const NumReg int = 10
@@ -15,7 +16,7 @@ const NumReg int = 10
 type Instruction byte
 
 // a zero-byte "message" used for the Wait/Signal system
-type signal struct {}
+type signal struct{}
 
 const (
 	InsHalt Instruction = iota // halt = 0, so that uninit memory (0) causes a halt
@@ -23,12 +24,14 @@ const (
 	InsMemReg
 	InsRegMem
 	InsImmReg
-	InsIncReg
+	InsMovReg
+	InsAddReg
+	InsSubReg
+	InsDivReg
 	InsGotoIfEqual
-	InsCall
-	InsReturn
+	//InsCall
+	//InsReturn
 	InsWait
-	InsXorReg
 )
 
 type Address uint16
@@ -38,24 +41,24 @@ type WriteCallback func(where Address, what byte)
 
 type Processor struct {
 	mem       []byte
-	Top				int
+	Top       int
 	Reg       Registers
 	input     map[Address]ReadCallback
 	output    map[Address]WriteCallback
 	traceName string
-	logger		Logger
-	channel		chan signal
-	Sleeping	bool	// this is a race condition waiting to happen, but it is a useful hack for the intended use: ../cmd/clue
-	Peer		*Processor
+	logger    Logger
+	channel   chan signal
+	Sleeping  int32 // this is a race condition waiting to happen, but it is a useful hack for the intended use: ../cmd/clue
+	Peer      *Processor
 }
 
 func NewProcessor(ram int) *Processor {
 	return &Processor{
-		mem:    make([]byte, ram),
-		Top:    ram,
-		input:  make(map[Address]ReadCallback),
-		output: make(map[Address]WriteCallback),
-		channel:	make(chan signal, 1),
+		mem:     make([]byte, ram),
+		Top:     ram,
+		input:   make(map[Address]ReadCallback),
+		output:  make(map[Address]WriteCallback),
+		channel: make(chan signal, 1),
 	}
 }
 
@@ -98,11 +101,11 @@ func (p *Processor) Poke(where Address, what byte) {
 	if !p.addressInRange(where) {
 		p.trace(fmt.Sprintf("write to address %d out of range", where))
 	} else {
-	if fp, exists := p.output[where]; exists {
-		fp(where, what)
-	} else {
-		p.mem[where] = what
-	}
+		if fp, exists := p.output[where]; exists {
+			fp(where, what)
+		} else {
+			p.mem[where] = what
+		}
 	}
 }
 
@@ -141,7 +144,7 @@ func (p *Processor) getReg(reg byte) Address {
 	return p.Reg[reg]
 }
 
-func (p *Processor)Signal() {
+func (p *Processor) Signal() {
 	var s signal
 	// a non-blocking write on the channel (it is buffered with depth 1
 	// so falling to default here says, "was already signaled")
@@ -181,7 +184,7 @@ func (p *Processor) Step() bool {
 		where := p.getReg(from)
 		to := p.Peek(ip)
 		ip++
-		p.trace(fmt.Sprintf("%d: memreg %d %d", ipo, from, to))
+		p.trace(fmt.Sprintf("%d: *r%d -> r%d", ipo, from, to))
 		p.Reg[to] = Address(p.Peek(where))
 		if to == 0 {
 			// do not do final Reg[0]=ip if this instruction is a goto
@@ -193,14 +196,14 @@ func (p *Processor) Step() bool {
 		to := p.Peek(ip)
 		ip++
 		where := p.getReg(to)
-		p.trace(fmt.Sprintf("%d: regmem %d %d", ipo, from, to))
+		p.trace(fmt.Sprintf("%d: r%d -> *r%d", ipo, from, to))
 		p.Poke(where, byte(p.Reg[from]&0xff))
 	case InsImmReg:
 		imm := p.getAddress(ip)
 		ip = ip + 2
 		to := p.Peek(ip)
 		ip++
-		p.trace(fmt.Sprintf("%d: immreg %d %d", ipo, imm, to))
+		p.trace(fmt.Sprintf("%d: value %d -> r%d", ipo, imm, to))
 		p.Reg[to] = imm
 		if to == 0 {
 			// do not do final Reg[0]=ip if this instruction is a goto
@@ -213,69 +216,104 @@ func (p *Processor) Step() bool {
 		ip++
 		b := p.getReg(p.Peek(ip))
 		ip++
-		p.trace(fmt.Sprintf("%d: gotoifequal %d %d %d", ipo, where, a, b))
+		p.trace(fmt.Sprintf("%d: goto %d if r%d == r%d", ipo, where, a, b))
 		if a == b {
 			p.Reg[0] = where
 			// do not do final reg[0]=ip
 			return true
 		}
-	case InsIncReg:
-		which := p.Peek(ip)
-		ip++
-		if int(which) < len(p.Reg) {
-			p.Reg[which]++
-		} else {
-			panic("bad register")
-		}
-		p.trace(fmt.Sprintf("%d: increg %d", ipo, which))
-		if which == 0 {
-			// do not do final reg[0]=ip
-			return true
-		}
-	case InsXorReg:
+	case InsAddReg:
 		b := p.Peek(ip)
 		ip++
 		a := p.Peek(ip)
 		ip++
 		if int(a) < len(p.Reg) && int(b) < len(p.Reg) {
-			p.Reg[a] = p.Reg[a] ^ p.Reg[b]
+			p.Reg[a] = p.Reg[a] + p.Reg[b]
 		} else {
 			panic("bad register")
 		}
-		p.trace(fmt.Sprintf("%d: xorreg %d %d", ipo, a, b))
+		p.trace(fmt.Sprintf("%d: r%d + r%d -> r%d", ipo, a, b, a))
 		if a == 0 {
 			// do not do final reg[0]=ip
 			return true
 		}
-	case InsCall:
-		where := p.getAddress(ip)
-		ip = ip + 2
-		p.Reg[9] -= 2
-		stack := p.Reg[9]
-		p.Poke(stack, byte((ip>>8)&0xff))
-		p.Poke(stack+1, byte(ip&0xff))
-		p.Reg[0] = where
-		p.trace(fmt.Sprintf("%d: call %d # new top of stack: %d", ipo, where, stack))
-		return true
-	case InsReturn:
-		stack := p.Reg[9]
-		to := p.getAddress(stack)
-		p.Reg[9] += 2
-		p.Reg[0] = to
-		p.trace(fmt.Sprintf("%d: return # new top of stack: %d", ipo, p.Reg[9]))
-		return true
+	case InsSubReg:
+		b := p.Peek(ip)
+		ip++
+		a := p.Peek(ip)
+		ip++
+		if int(a) < len(p.Reg) && int(b) < len(p.Reg) {
+			p.Reg[a] = p.Reg[a] - p.Reg[b]
+		} else {
+			panic("bad register")
+		}
+		p.trace(fmt.Sprintf("%d: r%d - r%d -> r%d", ipo, a, b, a))
+		if a == 0 {
+			// do not do final reg[0]=ip
+			return true
+		}
+	case InsDivReg:
+		b := p.Peek(ip)
+		ip++
+		a := p.Peek(ip)
+		ip++
+		if int(a) < len(p.Reg) && int(b) < len(p.Reg) {
+			p.Reg[a] = p.Reg[a] / p.Reg[b]
+		} else {
+			panic("bad register")
+		}
+		p.trace(fmt.Sprintf("%d: %d / %d -> %d", ipo, a, b, a))
+		if a == 0 {
+			// do not do final reg[0]=ip
+			return true
+		}
+	case InsMovReg:
+		b := p.Peek(ip)
+		ip++
+		a := p.Peek(ip)
+		ip++
+		if int(a) < len(p.Reg) && int(b) < len(p.Reg) {
+			p.Reg[a] = p.Reg[b]
+		} else {
+			panic("bad register")
+		}
+		p.trace(fmt.Sprintf("%d: r%d -> r%d", ipo, b, a))
+		if a == 0 {
+			// do not do final reg[0]=ip
+			return true
+		}
+		/*
+			case InsCall:
+				where := p.getAddress(ip)
+				ip = ip + 2
+				p.Reg[9] -= 2
+				stack := p.Reg[9]
+				p.Poke(stack, byte((ip>>8)&0xff))
+				p.Poke(stack+1, byte(ip&0xff))
+				p.Reg[0] = where
+				p.trace(fmt.Sprintf("%d: call %d # new top of stack: %d", ipo, where, stack))
+				return true
+			case InsReturn:
+				stack := p.Reg[9]
+				to := p.getAddress(stack)
+				p.Reg[9] += 2
+				p.Reg[0] = to
+				p.trace(fmt.Sprintf("%d: return # new top of stack: %d", ipo, p.Reg[9]))
+				return true
+		*/
 	case InsWait:
 		// wait until signaled via a call to p.Signal()
 		p.trace(fmt.Sprintf("%d: wait", ipo))
 		// this is a race condition nightmare, and would never
 		// work outside of the restricted case of two peers
 		// as we are doing in ../cmd/clue
-		p.Sleeping = true
-		if p.Peer != nil && p.Peer.Sleeping {
+		p.Sleeping = 1
+		peerSleep := atomic.LoadInt32(&p.Peer.Sleeping)
+		if p.Peer != nil && peerSleep == 1 {
 			panic("would deadlock")
 		}
-		_ = <- p.channel
-		p.Sleeping = false
+		_ = <-p.channel
+		p.Sleeping = 0
 	case InsHalt:
 		p.trace(fmt.Sprintf("%d: halt", ipo))
 		p.Reg[0] = ip
@@ -290,7 +328,7 @@ func getAddr(s string, labels map[string]Address) (val Address) {
 	if len(s) > 1 && strings.ContainsRune("abcdefghijklmnopqrstuvwxyz", rune(s[0])) {
 		var ok bool
 		if val, ok = labels[s]; !ok {
-				panic("unknown label")
+			panic("unknown label")
 		}
 	} else {
 		i, err := strconv.ParseInt(s, 0, 16)
@@ -362,55 +400,70 @@ func Assemble(r io.Reader) (res []byte) {
 		case "wait":
 			res = append(res, byte(InsWait))
 			here++
-		case "return":
-			res = append(res, byte(InsReturn))
-			here++
+			/*
+				case "return":
+					res = append(res, byte(InsReturn))
+					here++
+				case "call":
+					need(tok, 1)
+					res = append(res, byte(InsCall))
+					val := getAddr(tok[1], labels)
+					res = append(res, byte((val >> 8) & 0xff))
+					res = append(res, byte(val & 0xff))
+					here += 3
+			*/
 		case "gotoifequal":
 			need(tok, 3)
 			res = append(res, byte(InsGotoIfEqual))
 			val := getAddr(tok[1], labels)
-			res = append(res, byte((val >> 8) & 0xff))
-			res = append(res, byte(val & 0xff))
-			res = append(res, byte(getAddr(tok[2], labels) & 0xff))
-			res = append(res, byte(getAddr(tok[3], labels) & 0xff))
+			res = append(res, byte((val>>8)&0xff))
+			res = append(res, byte(val&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
+			res = append(res, byte(getAddr(tok[3], labels)&0xff))
 			here += 5
 		case "regmem":
 			need(tok, 2)
 			res = append(res, byte(InsRegMem))
-			res = append(res, byte(getAddr(tok[1], labels) & 0xff))
-			res = append(res, byte(getAddr(tok[2], labels) & 0xff))
+			res = append(res, byte(getAddr(tok[1], labels)&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
 			here += 3
 		case "memreg":
 			need(tok, 2)
 			res = append(res, byte(InsMemReg))
-			res = append(res, byte(getAddr(tok[1], labels) & 0xff))
-			res = append(res, byte(getAddr(tok[2], labels) & 0xff))
+			res = append(res, byte(getAddr(tok[1], labels)&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
 			here += 3
-		case "increg":
-			need(tok, 1)
-			res = append(res, byte(InsIncReg))
-			res = append(res, byte(getAddr(tok[1], labels) & 0xff))
-			here += 2
-		case "xorreg":
+		case "movreg":
 			need(tok, 2)
-			res = append(res, byte(InsXorReg))
-			res = append(res, byte(getAddr(tok[1], labels) & 0xff))
-			res = append(res, byte(getAddr(tok[2], labels) & 0xff))
+			res = append(res, byte(InsMovReg))
+			res = append(res, byte(getAddr(tok[1], labels)&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
 			here += 3
-		case "call":
-			need(tok, 1)
-			res = append(res, byte(InsCall))
-			val := getAddr(tok[1], labels)
-			res = append(res, byte((val >> 8) & 0xff))
-			res = append(res, byte(val & 0xff))
+		case "addreg":
+			need(tok, 2)
+			res = append(res, byte(InsAddReg))
+			res = append(res, byte(getAddr(tok[1], labels)&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
+			here += 3
+		case "subreg":
+			need(tok, 2)
+			res = append(res, byte(InsSubReg))
+			res = append(res, byte(getAddr(tok[1], labels)&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
+			here += 3
+		case "devreg":
+			need(tok, 2)
+			res = append(res, byte(InsDivReg))
+			res = append(res, byte(getAddr(tok[1], labels)&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
 			here += 3
 		case "immreg":
 			need(tok, 2)
 			res = append(res, byte(InsImmReg))
 			val := getAddr(tok[1], labels)
-			res = append(res, byte((val >> 8) & 0xff))
-			res = append(res, byte(val & 0xff))
-			res = append(res, byte(getAddr(tok[2], labels) & 0xff))
+			res = append(res, byte((val>>8)&0xff))
+			res = append(res, byte(val&0xff))
+			res = append(res, byte(getAddr(tok[2], labels)&0xff))
 			here += 4
 		}
 	}

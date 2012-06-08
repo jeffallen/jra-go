@@ -146,7 +146,7 @@ func TestCommunicate(t *testing.T) {
 	p1 := []byte{
 		// init:
 		byte(InsImmReg), 0, 1, 5, // r5 holds address of the output port
-		byte(InsImmReg), 0, 2, 2,	// write to 2 to signal the other guy
+		byte(InsImmReg), 0, 2, 2, // write to 2 to signal the other guy
 		byte(InsImmReg), 0, 0, 8, // for compare to end of string
 		byte(InsImmReg), 0, 200, 3, // r3 = start of message
 		// top: wait until signaled to send
@@ -171,7 +171,7 @@ func TestCommunicate(t *testing.T) {
 		byte(InsMemReg), 1, 3, // bring in a byte
 		byte(InsGotoIfEqual), 0, 132, 3, 8, // check for zero: exit
 		byte(InsRegMem), 3, 8, // output the byte
-		byte(InsImmReg), 0, 112, 0,	// loop
+		byte(InsImmReg), 0, 112, 0, // loop
 		byte(InsHalt),
 	}
 
