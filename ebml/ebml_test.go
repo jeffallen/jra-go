@@ -21,14 +21,15 @@ var thetests = []test{
 	{[]byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f}, 0x1f, nil},
 	{[]byte{0x01, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff}, 0xff0000000000ff, nil},
 	{[]byte{0x41}, 0x100, io.EOF},
-	{[]byte{0x00}, 0, BadFormat},
+	{[]byte{0x00}, 0, BadVint},
 }
 
 func TestVint(t *testing.T) {
 	for _, x := range thetests {
 		t.Logf("Expecting %v", x.expect)
 		r := bytes.NewReader(x.bytes)
-		v, err := readVint(r)
+		m := NewMaster(r)
+		v, err := m.readVint()
 		if err != x.err {
 			t.Fatal(err)
 		} else {
