@@ -1,18 +1,4 @@
-To assemble a program:
-	./clue -assemble="`cat program`"
+To assemble a program: ./clue -assemble prog.src
 
-The last line of the program might not get processed. Add some halts
-to be sure.
+To assemble and run a program: ./clue -assemble prog.src | ./clue
 
-To run a program:
-	./clue < run-answer
-
-To run a program and see only the bytes output by the processor
-(and not the debugging stuff):
-	./clue < run-answer > /dev/null
-
-(The bytes output by the processor go to stderr.)
-
-When you add the "-havingFun=false" flag, instruction logging
-is turned on on both the remote and local processor, making it
-much easier to see what's happening.

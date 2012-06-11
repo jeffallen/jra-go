@@ -1,0 +1,31 @@
+  org 100
+  immreg 1 1
+  immreg 3 3
+  immreg 64 9
+  immreg 0 6
+  # busy wait for "data arrived", *r1 != 255
+  immreg 255 8
+spin:
+  memreg 1 4
+  gotoifequal spin 4 8
+  # stop if mesage is done (mem is 0-initialized, *99 == 0, 0 = halt)
+  immreg 0 8
+  gotoifequal stop 4 8
+  # decode: subtract last letter
+  subreg 6 4
+  # div by 3
+  divreg 3 4
+  # remember for next time
+  movreg 4 6
+  # add 64
+  addreg 9 4
+  # write decrypted message to output
+  immreg 0 8
+  regmem 4 8
+  # write 255 to *r1 to say "clear to send"
+  immreg 255 8
+  regmem 8 1
+  # loop
+  immreg 116 0
+stop:
+  halt
