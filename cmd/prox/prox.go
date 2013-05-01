@@ -1,7 +1,8 @@
 package main
 
 import (
-	"code.google.com/p/jra-go/linkio"
+	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -11,13 +12,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"code.google.com/p/jra-go/linkio"
 )
-
-var gLink *linkio.Link
-
-func init() {
-	gLink = linkio.NewLink(56 /* kbps */)
-}
 
 func loghit(r *http.Request, code int) {
 	log.Printf("%v %v %v", r.Method, r.RequestURI, code)
@@ -40,6 +37,55 @@ func NewProxy() *Proxy { return &Proxy{} }
 func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	// c = things towards the client of the proxy
 	// o = things towards origin server
+
+	if creq.Method == "CONNECT" {
+		rc, err := net.Dial("tcp", creq.URL.Host)
+		if err != nil {
+			http.Error(cwr, err.Error(), http.StatusGatewayTimeout)
+			loghit(creq, http.StatusGatewayTimeout)
+			return
+		}
+		remote := bufio.NewReadWriter(bufio.NewReader(rc),
+			bufio.NewWriter(rc))
+
+		cwr.WriteHeader(http.StatusOK)
+		loghit(creq, http.StatusOK)
+
+		hj, ok := cwr.(http.Hijacker)
+		if !ok {
+			panic("not hijackable")
+		}
+		wc, client, err := hj.Hijack()
+
+		done := make(chan int)
+
+		f := func(from, to *bufio.ReadWriter) {
+			var err error
+			n := 0
+			for err == nil {
+				var c byte
+				c, err = from.ReadByte()
+				n++
+				if err == nil {
+					err = to.WriteByte(c)
+					to.Flush()
+				}
+			}
+			done <- n
+		}
+		go f(remote, client)
+		go f(client, remote)
+
+		// wait for one side to finish and close both sides
+		tot := <-done
+		wc.Close()
+		rc.Close()
+		tot += <-done
+
+		log.Print("CONNECT finished, ", tot, " bytes")
+		return
+	}
+
 	oreq := new(http.Request)
 	oreq.ProtoMajor = 1
 	oreq.ProtoMinor = 1
@@ -88,7 +134,7 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 		return
 	}
 	c.SetReadDeadline(time.Now().Add(3 * time.Second))
-	cc := httputil.NewClientConn(c, nil)
+	cc := httputil.NewProxyClientConn(c, nil)
 
 	// debug
 	//dbg, err := http.DumpRequest(oreq, true)
@@ -127,7 +173,13 @@ func (p *Proxy) ServeHTTP(cwr http.ResponseWriter, creq *http.Request) {
 	loghit(creq, oresp.StatusCode)
 }
 
+var speed = flag.Int("speed", 56, "speed of simulated link in kbps")
+var gLink = linkio.NewLink(56 /* kbps */)
+
 func main() {
+	flag.Parse()
+	gLink.SetSpeed(*speed)
+
 	proxy := NewProxy()
 	err := http.ListenAndServe("[::]:12345", proxy)
 	if err != nil {
