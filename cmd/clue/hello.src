@@ -1,0 +1,15 @@
+# Hello World
+ org 100
+ immreg 1 1
+ immreg 0 2
+ immreg 132 3
+loop:
+ memreg 3 4
+ gotoifequal stop 2 4
+ regmem 4 2
+ addreg 1 3
+ immreg loop 0
+stop:
+ halt
+data:
+ raw 72 69 76 76 79 64 87 79 82 76 68 0
