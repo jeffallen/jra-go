@@ -1,3 +1,5 @@
+// Package debugreader implements an io.Reader that
+// logs information about the Read it receives to os.Stderr.
 package debugreader
 
 import (
@@ -10,6 +12,8 @@ type debugReader struct {
 	r io.Reader
 }
 
+
+// NewReader constructs a new io.Reader that will log to os.Stderr.
 func NewReader(r io.Reader) io.Reader {
 	return &debugReader{r: r}
 }
