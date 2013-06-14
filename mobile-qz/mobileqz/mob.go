@@ -1,19 +1,19 @@
 package mobileqz
 
 import (
-	"time"
-	"bytes"
 	"appengine"
-	"appengine/urlfetch"
 	"appengine/memcache"
+	"appengine/urlfetch"
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"strconv"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"text/template"
+	"time"
 )
 
 var page *template.Template
@@ -21,7 +21,7 @@ var page *template.Template
 // A Page is passed into the main HTML page template.
 type Page struct {
 	Title string
-	Body string
+	Body  string
 }
 
 type Response struct {
@@ -32,55 +32,55 @@ type Response struct {
 }
 
 type Author struct {
-	Name string
-	Twitter string
-	Url	string
-	Username	string
+	Name     string
+	Twitter  string
+	Url      string
+	Username string
 }
 
 type Byline struct {
 	BylineString string
-	Authors []Author
+	Authors      []Author
 }
 
 type Result struct {
-	Id int
-	Title     string
-	Permalink string
-	Summary   string
-	Content   string
-	Byline	Byline
+	Id         int
+	Title      string
+	Permalink  string
+	Summary    string
+	Content    string
+	Byline     Byline
 	Taxonomies Taxonomy
 }
 
 type Taxonomy struct {
 	Kicker []Tag
-	Tags []Tag
+	Tags   []Tag
 }
 
 type Tag struct {
-	Name	string
-	Tag	string
+	Name string
+	Tag  string
 }
 
-func (r Result)byline() string {
+func (r Result) byline() string {
 	if r.Byline.BylineString != "" {
 		return r.Byline.BylineString
 	}
 
 	lines := make([]string, len(r.Byline.Authors))
-	for i,a := range r.Byline.Authors {
+	for i, a := range r.Byline.Authors {
 		lines[i] = fmt.Sprintf("<a href=\"%v\">%v</a>", a.Url, a.Name)
 	}
 	return strings.Join(lines, ", ")
 }
 
-func (r Result)tags() string {
+func (r Result) tags() string {
 	t := r.Taxonomies.Kicker
 	t = append(t, r.Taxonomies.Tags...)
 
 	t2 := make([]string, len(t))
-	for i,tag := range t {
+	for i, tag := range t {
 		t2[i] = tag.Name
 	}
 	return strings.Join(t2, ", ")
@@ -137,8 +137,8 @@ func getQuartzFromNet(ctx appengine.Context) (*Response, error) {
 	}
 
 	i := &memcache.Item{
-		Key: "api/top",
-		Object: &r,
+		Key:        "api/top",
+		Object:     &r,
 		Expiration: 300 * time.Second,
 	}
 	memcache.Gob.Set(ctx, i)
@@ -164,7 +164,7 @@ func articlePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var art Result
-	for _,r := range q.Results {
+	for _, r := range q.Results {
 		if r.Id == int(wanted) {
 			art = r
 		}
@@ -176,7 +176,7 @@ func articlePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(b, "<small><i><p>%v</p></i></small>\n", art.tags())
 	fmt.Fprintf(b, "%v", art.Content)
 
-	p := Page{ Title: "Mobile Quartz: Front Page", Body: string(b.Bytes()) }
+	p := Page{Title: "Mobile Quartz: Front Page", Body: string(b.Bytes())}
 	page.Execute(w, p)
 }
 
@@ -198,6 +198,6 @@ func frontPage(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprintf(b, "</ul>")
 
-	p := Page{ Title: "Mobile Quartz: Front Page", Body: string(b.Bytes()) }
+	p := Page{Title: "Mobile Quartz: Front Page", Body: string(b.Bytes())}
 	page.Execute(w, p)
 }
