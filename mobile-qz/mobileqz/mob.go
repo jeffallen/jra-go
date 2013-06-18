@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/template"
@@ -87,13 +88,15 @@ func (r Result) tags() string {
 }
 
 func init() {
+	log.Print("init called")
 	http.HandleFunc("/", frontPage)
 	http.HandleFunc("/article/", articlePage)
+	http.HandleFunc("/about", aboutPage)
 
 	page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <html>
 <head>
-  <title>{{html .Title}}</title>
+  <title>{{.Title}}</title>
 </head>
 <body>
   {{/* Body should already be HTML escaped */}}
@@ -112,10 +115,7 @@ func getQuartz(ctx appengine.Context) (*Response, error) {
 func getQuartzFromCache(ctx appengine.Context) (*Response, error) {
 	var res Response
 	_, err := memcache.Gob.Get(ctx, "api/top", &res)
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
+	return &res, err
 }
 
 func getQuartzFromNet(ctx appengine.Context) (*Response, error) {
@@ -144,6 +144,34 @@ func getQuartzFromNet(ctx appengine.Context) (*Response, error) {
 	memcache.Gob.Set(ctx, i)
 
 	return &r, nil
+}
+
+func aboutPage(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	fmt.Fprintf(w, "<h1>%v</h1>", appengine.DefaultVersionHostname(c))
+
+	token, expire, _ := appengine.AccessToken(c, "test")
+	fmt.Fprintf(w, "<p>AccessToken: %v %v", token, expire)
+
+	fmt.Fprintf(w, "<p>AppID: %v", appengine.AppID(c))
+	fmt.Fprintf(w, "<p>FQAppID: %v", c.FullyQualifiedAppID())
+	fmt.Fprintf(w, "<p>Go version: %v", runtime.Version())
+	fmt.Fprintf(w, "<p>Datacenter: %v", appengine.Datacenter())
+	fmt.Fprintf(w, "<p>InstanceID: %v", appengine.InstanceID())
+	fmt.Fprintf(w, "<p>IsDevAppServer: %v", appengine.IsDevAppServer())
+	fmt.Fprintf(w, "<p>RequestID: %v", appengine.RequestID(c))
+	fmt.Fprintf(w, "<p>ServerSoftware: %v", appengine.ServerSoftware())
+
+	sa, _ := appengine.ServiceAccount(c)
+	fmt.Fprintf(w, "<p>ServiceAccount: %v", sa)
+
+	keyname, signed, _ := appengine.SignBytes(c, []byte("test"))
+	fmt.Fprintf(w, "<p>SignBytes: %v %v", keyname, signed)
+	fmt.Fprintf(w, "<p>VersionID: %v", appengine.VersionID(c))
+
+	fmt.Fprintf(w, "<p>Request: %v", r)
+	r2 := c.Request()
+	fmt.Fprintf(w, "<p>Context Request type/value: %T %v", r2, r2)
 }
 
 func articlePage(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +204,7 @@ func articlePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(b, "<small><i><p>%v</p></i></small>\n", art.tags())
 	fmt.Fprintf(b, "%v", art.Content)
 
-	p := Page{Title: "Mobile Quartz: Front Page", Body: string(b.Bytes())}
+	p := Page{Title: art.Title, Body: string(b.Bytes())}
 	page.Execute(w, p)
 }
 

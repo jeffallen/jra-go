@@ -4,6 +4,10 @@ runtime: go
 api_version: go1
 
 handlers:
+- url: /robots.txt
+  static_files: static/robots.txt
+  upload: static/robots.txt
+ 
 - url: /google1e289df47a51b487.html
   static_files: static/google1e289df47a51b487.html
   upload: static/google1e289df47a51b487.html
