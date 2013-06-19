@@ -1,3 +1,5 @@
+// +build appengine
+
 package mobileqz
 
 import (
@@ -8,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -88,7 +89,6 @@ func (r Result) tags() string {
 }
 
 func init() {
-	log.Print("init called")
 	http.HandleFunc("/", frontPage)
 	http.HandleFunc("/article/", articlePage)
 	http.HandleFunc("/about", aboutPage)
@@ -101,6 +101,7 @@ func init() {
 <body>
   {{/* Body should already be HTML escaped */}}
   {{ printf "%s" .Body }}
+<script src="/scripts/sz.js"></script>
 </body>
 </html>`))
 }
@@ -143,6 +144,11 @@ func getQuartzFromNet(ctx appengine.Context) (*Response, error) {
 	}
 	memcache.Gob.Set(ctx, i)
 
+	// fix stuff I don't like about their content...
+	for i := range r.Results {
+		r.Results[i].Title = fixHeadline(r.Results[i].Title)
+	}
+
 	return &r, nil
 }
 
@@ -180,14 +186,14 @@ func articlePage(w http.ResponseWriter, r *http.Request) {
 	q, err := getQuartz(c)
 	if err != nil {
 		fmt.Fprintf(w, "Error: %v", err)
-		log.Fatal(err)
+		c.Errorf("%v", err)
 		return
 	}
 
 	artstr := strings.Trim(r.URL.Path, "/article/")
 	wanted, err := strconv.ParseUint(artstr, 10, 64)
 	if err != nil {
-		log.Fatal(err)
+		c.Errorf("%v", err)
 		return
 	}
 
@@ -195,6 +201,18 @@ func articlePage(w http.ResponseWriter, r *http.Request) {
 	for _, r := range q.Results {
 		if r.Id == int(wanted) {
 			art = r
+		}
+	}
+
+	// if they told us their screen size, then adapt images to it
+	if ck, err := r.Cookie("w"); err == nil {
+		if w, err := strconv.Atoi(ck.Value); err == nil {
+			//c.Debugf("got w cookie with w=%v", w)
+			// Android cell phone reports width 800 even
+			// when zoomed to make text readable.
+			if w == 800 {
+				art.Content = fixImages(art.Content, 400)
+			}
 		}
 	}
 
@@ -214,7 +232,7 @@ func frontPage(w http.ResponseWriter, r *http.Request) {
 	q, err := getQuartz(c)
 	if err != nil {
 		fmt.Fprintf(w, "Error: %v", err)
-		log.Fatal(err)
+		c.Errorf("%v", err)
 		return
 	}
 
