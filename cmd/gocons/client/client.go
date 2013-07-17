@@ -7,13 +7,14 @@ package main
 
 import (
 	"encoding/gob"
-	"exp/terminal"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
+
+	"code.google.com/p/go.crypto/ssh/terminal"
 )
 
 type connCmd int
