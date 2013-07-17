@@ -1,3 +1,5 @@
+// Package what3words implements an interface to the what2words.com
+// mappings from words to locations on the planet.
 package what3words
 
 import (
