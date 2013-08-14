@@ -106,21 +106,22 @@ func init() {
 </html>`))
 }
 
-func getQuartz(ctx appengine.Context) (*Response, error) {
-	if r, err := getQuartzFromCache(ctx); err == nil {
+func get(ctx appengine.Context, q string) (*Response, error) {
+	if r, err := getFromCache(ctx, q); err == nil {
 		return r, err
 	}
-	return getQuartzFromNet(ctx)
+	return getFromNet(ctx, q)
 }
 
-func getQuartzFromCache(ctx appengine.Context) (*Response, error) {
+func getFromCache(ctx appengine.Context, q string) (*Response, error) {
 	var res Response
-	_, err := memcache.Gob.Get(ctx, "api/top", &res)
+	_, err := memcache.Gob.Get(ctx, q, &res)
 	return &res, err
 }
 
-func getQuartzFromNet(ctx appengine.Context) (*Response, error) {
-	resp, err := urlfetch.Client(ctx).Get("http://qz.com/api/top")
+func getFromNet(ctx appengine.Context, q string) (*Response, error) {
+	url := fmt.Sprintf("http://qz.com/api/%s", q)
+	resp, err := urlfetch.Client(ctx).Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -137,17 +138,20 @@ func getQuartzFromNet(ctx appengine.Context) (*Response, error) {
 		return nil, err
 	}
 
+	// Fix their content for our purposes.
+	for i := range r.Results {
+		r.Results[i].Title = fixHeadline(r.Results[i].Title)
+		r.Results[i].Content = fixQzLinks(r.Results[i].Content)
+	}
+
+	// We cache the fixed version so that we don't need to do the fixes
+	// again later.
 	i := &memcache.Item{
-		Key:        "api/top",
+		Key:        q,
 		Object:     &r,
 		Expiration: 300 * time.Second,
 	}
 	memcache.Gob.Set(ctx, i)
-
-	// fix stuff I don't like about their content...
-	for i := range r.Results {
-		r.Results[i].Title = fixHeadline(r.Results[i].Title)
-	}
 
 	return &r, nil
 }
@@ -183,16 +187,16 @@ func aboutPage(w http.ResponseWriter, r *http.Request) {
 func articlePage(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 
-	q, err := getQuartz(c)
+	artstr := strings.Trim(r.URL.Path, "/article/")
+	wanted, err := strconv.ParseUint(artstr, 10, 64)
 	if err != nil {
-		fmt.Fprintf(w, "Error: %v", err)
 		c.Errorf("%v", err)
 		return
 	}
 
-	artstr := strings.Trim(r.URL.Path, "/article/")
-	wanted, err := strconv.ParseUint(artstr, 10, 64)
+	q, err := get(c, fmt.Sprintf("single/%d", wanted))
 	if err != nil {
+		fmt.Fprintf(w, "Error: %v", err)
 		c.Errorf("%v", err)
 		return
 	}
@@ -229,7 +233,7 @@ func articlePage(w http.ResponseWriter, r *http.Request) {
 func frontPage(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 
-	q, err := getQuartz(c)
+	q, err := get(c, "top")
 	if err != nil {
 		fmt.Fprintf(w, "Error: %v", err)
 		c.Errorf("%v", err)

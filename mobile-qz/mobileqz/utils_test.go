@@ -39,3 +39,12 @@ func TestImageFix(t *testing.T) {
 		t.Error("Got", out)
 	}
 }
+
+func TestFixQzLinks(t *testing.T) {
+	in := `now has <a href="http://qz.com/114272/blackberry-is-now-where-motorola-once-was-and-has-no-choice-but-to-sell/">little choice but to sell</a>.`
+	want := `now has <a href="/article/114272">little choice but to sell</a>.`
+	got := fixQzLinks(in)
+	if want != got {
+		t.Error("wrong:", got)
+	}
+}

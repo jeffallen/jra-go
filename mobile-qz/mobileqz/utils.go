@@ -78,8 +78,25 @@ func fixImages(in string, width int) string {
 		if len(wh) == 2 {
 			w, _ := strconv.Atoi(string(wh[0]))
 			h, _ := strconv.Atoi(string(wh[1]))
+			// avoid div by zero
+			if width == 0 || w/width == 0 {
+				return in
+			}
 			return []byte(fmt.Sprintf("width=\"%d\" height=\"%d\"",
 				width, h/(w/width)))
+		}
+		return in
+	})
+	return string(out)
+}
+
+var reFixQzLinks = regexp.MustCompile(`http://qz.com/([0-9]+)/[^/]*/`)
+
+func fixQzLinks(in string) string {
+	out := reFixQzLinks.ReplaceAllFunc([]byte(in), func(in []byte) []byte {
+		nums := reNum.FindAll(in, 3)
+		if len(nums) >= 1 {
+			return []byte("/article/" + string(nums[0]))
 		}
 		return in
 	})
