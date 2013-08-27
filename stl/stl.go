@@ -6,6 +6,8 @@ import (
 	"io"
 )
 
+// A Scene holds all of the contents of an STL file, as well as
+// derived values.
 type Scene struct {
 	Header    [80]byte
 	Triangles []Triangle
@@ -15,17 +17,23 @@ type Scene struct {
 // A Region is a region of the coordinate space from Min to Max
 type Subspace struct {
 	Min    Point
-	minAbs float32
 	Max    Point
-	maxAbs float32
 }
 
+// A Line is a line segment in 3D space, denoted by two Points
+type Line struct {
+	End [2]Point
+}
+
+// A Triangle is a triangle in 3D space, denoted by three Points.
+// The "outside" of the triangle is denoted by its normal vector.
 type Triangle struct {
 	Normal Vector
 	Vertex [3]Point
 	Attr   uint16
 }
 
+// A Point is a point in 3D space.
 type Point struct {
 	X, Y, Z float32
 }
@@ -34,27 +42,27 @@ func (p1 Point) Equals(p2 Point) bool {
 	return p1.X == p2.X && p1.Y == p2.Y && p1.Z == p2.Z
 }
 
-func (p Point) setmin(min *Point) {
-	if p.X < min.X {
-		min.X = p.X
+func (s *Subspace) setmin(p Point) {
+	if p.X < s.Min.X {
+		s.Min.X = p.X
 	}
-	if p.Y < min.Y {
-		min.Y = p.Y
+	if p.Y < s.Min.Y {
+		s.Min.Y = p.Y
 	}
-	if p.Z < min.Z {
-		min.Z = p.Z
+	if p.Z < s.Min.Z {
+		s.Min.Z = p.Z
 	}
 }
 
-func (p Point) setmax(max *Point) {
-	if p.X > max.X {
-		max.X = p.X
+func (s *Subspace) setmax(p Point) {
+	if p.X > s.Max.X {
+		s.Max.X = p.X
 	}
-	if p.Y > max.Y {
-		max.Y = p.Y
+	if p.Y > s.Max.Y {
+		s.Max.Y = p.Y
 	}
-	if p.Z > max.Z {
-		max.Z = p.Z
+	if p.Z > s.Max.Z {
+		s.Max.Z = p.Z
 	}
 }
 
@@ -75,6 +83,7 @@ func (v Vector) Abs() float32 {
 // short name, for convenience
 var le = binary.LittleEndian
 
+// Decode reads an entire STL file from a Reader, returning a Scene.
 func Decode(r io.Reader) (s Scene, err error) {
 	_, err = io.ReadFull(r, s.Header[:])
 	if err != nil {
@@ -96,8 +105,8 @@ func Decode(r io.Reader) (s Scene, err error) {
 
 		// update the bounds
 		for _, p := range s.Triangles[i].Vertex {
-			p.setmin(&s.Bounds.Min)
-			p.setmax(&s.Bounds.Max)
+			s.Bounds.setmin(p)
+			s.Bounds.setmax(p)
 		}
 	}
 

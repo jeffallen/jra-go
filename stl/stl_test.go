@@ -7,16 +7,31 @@ import (
 )
 
 /*
-func TestPoint(t *testing.T) {
-	p := Point{0, 0, 1}
-	if !p.IsNormal() {
+func TestTriangleSlice(t *testing.T) {
+	tri := Triangle{
+		Vector{1, 1, 1},
+		[3]Point{Point{0, 0, 0},
+			Point{0, 1, 0},
+			Point{1, 0, 1},
+		}, 0,
+	}
+	intsersect, line := tri.Slice(Point{0,0,.5})
+	if !intersect {
+		t.Error("expected intersection")
+	}
+	t.Log(line)
+}
+*/
+
+func TestVector(t *testing.T) {
+	v := Vector{0, 0, 1}
+	if !v.IsNormal() {
 		t.Error("should be normal")
 	}
-	if p.Abs() != 1.0 {
+	if v.Abs() != 1.0 {
 		t.Error("abs is wrong")
 	}
 }
-*/
 
 func TestStlReader(t *testing.T) {
 	data := []byte{
