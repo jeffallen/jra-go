@@ -1,0 +1,40 @@
+	org 100
+	# r1 holds address of the output port
+	immreg 1 1
+	# r3 = start of message
+restart:
+	immreg 200 3
+	# r6 = previous letter
+	immreg 0 6
+	# to start, we assume we are clear to send
+	# read next byte of message (*r3)
+loop:
+	memreg 3 4
+	# if byte just read is zero, go direct to write
+	immreg 0 8
+	gotoifequal write 4 8
+	# encrypt: r4-=64, r4->r5(to use next time), r4*=3, r4+=r6
+	immreg 64 8
+	subreg 8 4
+	# remember it for next char
+	movreg 4 5
+	# r4*=3
+	addreg 5 4
+	addreg 5 4
+	# add last letter to this one
+	addreg 6 4
+	# remember pre-multipled r4 for next time
+	movreg 5 6
+write:
+	regmem 4 1
+	# r3++
+	immreg 1 8
+	addreg 8 3
+	immreg 255 8
+spin:
+	memreg 1 9
+	gotoifnotequal spin 9 8
+	# if we just wrote zero, loop with reinit
+	immreg 0 8
+	gotoifequal restart 4 8
+	immreg loop 0

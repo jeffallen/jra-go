@@ -1,0 +1,14 @@
+  # Get input from BIGMAC
+  org 100
+  immreg 1 1
+  immreg 0 2
+  immreg 255 8
+spin:
+  memreg 1 4
+  gotoifequal spin 4 8
+  gotoifequal stop 4 2
+  regmem 4 2
+  regmem 8 1
+  immreg spin 0
+stop:
+  halt

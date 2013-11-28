@@ -1,0 +1,4 @@
+To deploy:
+
+	cd ..
+	~/google_appengine/appcfg.py --oauth2 update mobile-qz
