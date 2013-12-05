@@ -528,7 +528,7 @@ func (c *incomingConn) reader() {
 		c.svr.stats.messageRecv()
 
 		if c.svr.Dump {
-			log.Printf("dump  in: %T", m)
+			log.Printf("dump  in: %T %v", m, m)
 		}
 
 		switch m := m.(type) {
@@ -641,7 +641,7 @@ func (c *incomingConn) writer() {
 
 	for job := range c.jobs {
 		if c.svr.Dump {
-			log.Printf("dump out: %T", job.m)
+			log.Printf("dump out: %T %v", job.m, job.m)
 		}
 
 		// TODO: write timeout
@@ -763,7 +763,7 @@ func (c *ClientConn) reader() {
 		}
 
 		if c.Dump {
-			log.Printf("dump  in: %T", m)
+			log.Printf("dump  in: %T %v", m, m)
 		}
 
 		switch m := m.(type) {
@@ -794,7 +794,7 @@ func (c *ClientConn) writer() {
 
 	for job := range c.out {
 		if c.Dump {
-			log.Printf("dump out: %T", job.m)
+			log.Printf("dump out: %T %v", job.m, job.m)
 		}
 
 		// TODO: write timeout
