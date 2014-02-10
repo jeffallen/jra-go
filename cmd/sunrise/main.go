@@ -16,29 +16,20 @@ var pic = flag.Bool("pic", false, "take a picture now")
 var tl = flag.Bool("tl", false, "take a time-lapse now")
 var dir = flag.String("dir", ".", "directory to save pictures")
 
-func tomorrowSunrise() time.Time {
-	now := time.Now()
-	if now.Hour() < 6 {
-		// ooh, someone's up late; if we are being started between 0 and 6am
-		// don't add to tomorrow
-	} else {
-		now = now.AddDate(0, 0, 1)
-	}
-
+func sunriseTime(now time.Time) time.Time {
 	ss := &sunrise.Sunrise{}
 	ss.Around(*lat, *lon, now)
 	return ss.Sunrise()
 }
 
-func todaySunset() time.Time {
-	now := time.Now()
+func sunsetTime(now time.Time) time.Time {
 	ss := &sunrise.Sunrise{}
 	ss.Around(*lat, *lon, now)
 	return ss.Sunset()
 }
 
 func picture() {
-				now := time.Now()
+	now := time.Now()
 	fn := fmt.Sprintf("%v/%v.jpg", *dir, now.Format("150405"))
 	cmd := exec.Command("raspistill", "-o", fn)
 	err := cmd.Run()
@@ -66,43 +57,44 @@ func main() {
 	}
 
 	if *tl {
-		timeLapse(10, 10 * time.Second)
+		timeLapse(10, 10*time.Second)
 		return
 	}
 
-	before := 10 * time.Minute
-	period := 30 * time.Second
-	// take pictures from sunrise-before until sunrise+before
-	photos := int(2*before / period)
 	log.Printf("Will take %v pictures.", photos)
 
 	for {
-		// each day, wait until sunrise
-		sr := tomorrowSunrise()
-		log.Println("tomorrow sunrise is:", sr)
-
-		// wake up early
-		wkup := sr.Add(-before)
-		log.Println("wakeup time is:", wkup)
-
-		sltime := wkup.Sub(time.Now())
-		log.Println("sleep time:", sltime)
-		time.Sleep(sltime)
-
-		timeLapse(photos, period)
-
-		// now wait until sunset
-		ss := todaySunset()
-		log.Println("today sunset is:", ss)
-
-		// wake up early
-		wkup = ss.Add(-before)
-		log.Println("wakeup time is:", wkup)
-
-		sltime = wkup.Sub(time.Now())
-		log.Println("sleep time:", sltime)
-		time.Sleep(sltime)
-
+		waitForNextEvent()
 		timeLapse(photos, period)
 	}
+}
+
+const before = 10 * time.Minute
+const period = 30 * time.Second
+
+// take pictures from sunrise-before until sunrise+before
+const photos = int(2 * before / period)
+
+func waitForNextEvent() {
+	now := time.Now()
+	s := sunriseTime(now).Add(-before)
+	fmt.Println("sunrise:", s)
+	if now.After(s) {
+		// sunrise is past, try sunset
+		ss := sunsetTime(now).Add(-before)
+		fmt.Println("sunset:", ss)
+		if now.After(s) {
+			// Sunset is already past today, wait for sunrise tomorrow
+			now = now.AddDate(0, 0, 1)
+			sr := sunriseTime(now).Add(-before)
+			fmt.Println("sunrise:", sr)
+			s = sr
+		} else {
+			s = ss
+		}
+	}
+
+	sltime := s.Sub(time.Now())
+	log.Println("sleep time:", sltime)
+	time.Sleep(sltime)
 }
