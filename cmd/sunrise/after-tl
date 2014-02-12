@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# done taking stills; restart the HTTP streamer
+stream-start
+
+# process the timelapse into a movie
+set -e
+dt=`date +%Y-%m-%d-%H`
+
+cd /var/www/pics
+mkdir -p $dt
+mv *.jpg $dt
+cd $dt
+ls -1tr | grep -v files.txt > files.txt
+mencoder -idx -nosound -noskip -ovc lavc -lavcopts \
+				vcodec=mjpeg -o $dt.avi -mf fps=15 'mf://@files.txt'
+rm files.txt
+cd ../..
+
+# vid transcoding in the cloud:
+ssh -i $HOME/.ssh/vidconvert jeff_allen@nella.org \
+					bin/vidconvert < pics/$dt/$dt.avi > timelapse/$dt.mp4

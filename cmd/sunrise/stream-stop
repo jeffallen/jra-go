@@ -1,0 +1,5 @@
+#!/bin/sh
+
+killall raspivid
+killall vlc
+exit 0
