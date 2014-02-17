@@ -1,3 +1,6 @@
 #!/bin/sh
 
-raspivid -o - -t 9999999 |cvlc -vvv stream:///dev/stdin --sout '#standard{access=http,mux=ts,dst=:8554}' :demux=h264 > /dev/null 2>&1 &
+raspivid --width 800 --height 640 -o - -n -t 0 | \
+	cvlc stream:///dev/stdin \
+		--sout '#standard{access=http,mux=ts,dst=:8554}' \
+		:demux=h264 > /dev/null 2>&1 &
