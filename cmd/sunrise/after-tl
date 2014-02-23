@@ -16,4 +16,4 @@ rm files.txt
 ssh -i $HOME/.ssh/vidconvert jeff_allen@nella.org \
 					bin/vidconvert $dt.mp4 < $dt.avi
 
-rm $dt.avi
+rm *.jpg $dt.avi
