@@ -135,7 +135,7 @@ func read(report string) (y *year, err error) {
 			} else {
 				h, _ := strconv.ParseInt(rise[0:2], 10, 32)
 				m, _ := strconv.ParseInt(rise[2:], 10, 32)
-				r := time.Date(y.year, time.Month(mon), day, int(h), int(m), 0, 0, y.loc)
+				r := time.Date(y.year, time.Month(mon+1), day+1, int(h), int(m), 0, 0, y.loc)
 				y.months[mon].rise[day] = r
 				y.months[mon].riseok[day] = true
 			}
@@ -144,7 +144,7 @@ func read(report string) (y *year, err error) {
 			} else {
 				h, _ := strconv.ParseInt(set[0:2], 10, 32)
 				m, _ := strconv.ParseInt(set[2:], 10, 32)
-				r := time.Date(y.year, time.Month(mon), day, int(h), int(m), 0, 0, y.loc)
+				r := time.Date(y.year, time.Month(mon+1), day+1, int(h), int(m), 0, 0, y.loc)
 				y.months[mon].set[day] = r
 				y.months[mon].setok[day] = true
 			}

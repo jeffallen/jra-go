@@ -20,8 +20,9 @@ var tl = flag.Bool("tl", false, "take a time-lapse now")
 var dir = flag.String("dir", ".", "directory to save pictures")
 var beforeTL = flag.String("beforeTL", "before-tl", "script to run before time lapse")
 var afterTL = flag.String("afterTL", "after-tl", "script to run after time lapse")
-var before = flag.Duration("before", 45*time.Minute, "how long to start taking photos before sunrise/sunset")
-var period = flag.Duration("period", 30*time.Second, "how long to wait between photos")
+var before = flag.Duration("before", 90*time.Minute, "how long to start taking photos before sunrise/sunset")
+var period = flag.Duration("period", 45*time.Second, "how long to wait between photos")
+var nowdelta = flag.Duration("nowdelta", 0*time.Second, "how far to shift time.Now (debug only)")
 
 func sunriseTime(now time.Time) time.Time {
 	ss := &sunrise.Sunrise{}
@@ -45,8 +46,12 @@ func run(exe string) {
 	}
 }
 
+func now() time.Time {
+	return time.Now().Add(*nowdelta)
+}
+
 func picture() {
-	now := time.Now()
+	now := now()
 	fn := fmt.Sprintf("%v/%v.jpg", *dir, now.Format("150405"))
 	log.Println("photo:", fn)
 	cmd := exec.Command("raspistill", "-n", "--width", "1920",
@@ -71,17 +76,17 @@ func timeLapse(count int, sleep time.Duration) {
 	run(*afterTL)
 }
 
-var db = &moonrise.Db{}
+var moonrises = &moonrise.Db{}
 
 func main() {
 	flag.Parse()
 
-	db.Load(rpt2014)
+	moonrises.Load(rpt2014)
 
 	photos := *nphotos
 	if photos == 0 {
-		// auto: take pictures from sunrise-before until sunrise+before+before
-		photos = int(3 * *before / *period)
+		// auto: take pictures from sunrise-before until sunrise+before
+		photos = int(2 * *before / *period)
 	}
 	log.Printf("Will take %v pictures, one each %v.", photos, *period)
 
@@ -102,50 +107,58 @@ func main() {
 }
 
 func waitForNextEvent() {
-	var mr time.Time
-	var mrok bool
-
 	l, _ := time.LoadLocation("Local")
-	now := time.Now()
+	now := now()
 
-	// A sunrise one?
-	s := sunriseTime(now).Add(-*before)
-	if now.Before(s) {
-		// is there a moonrise before sunrise? (i.e. during the night)
-		mr, mrok = db.Moonrise(now)
-		if mrok && now.Before(mr) && mr.Before(s) {
-			s = mr
-		}
-		goto ok
+	if *nowdelta != 0*time.Second {
+		fmt.Println("fake now is:", now)
 	}
 
-	// Take a noon time lapse
+	// Calculate times until all the various
+	// possible next events here. Then select the
+	// next event by finding the minimum.
+
+	what := append([]string{}, "today sunrise")
+	s := sunriseTime(now).Add(-*before)
+	until := append([]time.Duration{}, s.Sub(now))
+
+	what = append(what, "tomorrow sunrise")
+	s = sunriseTime(now.AddDate(0, 0, 1)).Add(-*before)
+	until = append(until, s.Sub(now))
+
+	mr, mrok := moonrises.Moonrise(now)
+	if mrok {
+	what = append(what, "today moonrise")
+		until = append(until, mr.Add(-*before).Sub(now))
+	}
+
+	mr, mrok = moonrises.Moonrise(now.AddDate(0, 0, 1))
+	if mrok {
+	what = append(what, "tomorrow moonrise")
+		until = append(until, mr.Add(-*before).Sub(now))
+	}
+
+	what = append(what, "noon")
 	s = time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, l)
 	s = s.Add(-*before)
-	if now.Before(s) {
-		goto ok
-	}
+	until = append(until, s.Sub(now))
 
-	// Sunrise is past, try sunset.
+	what = append(what, "today sunset")
 	s = sunsetTime(now).Add(-*before)
-	if now.Before(s) {
-		goto ok
+	until = append(until, s.Sub(now))
+
+	minwhat := "forever?"
+	min := time.Duration(99 * time.Hour)
+
+	for i, x := range until {
+		// Find minimum durations (ignoring negatives)
+		if x >= time.Duration(0) && x < min {
+			minwhat = what[i]
+			min = x
+		}
 	}
-
-	// Sunset is already past today, wait for sunrise tomorrow
-	now = now.AddDate(0, 0, 1)
-	s = sunriseTime(now).Add(-*before)
-
-	// is there a moonrise before sunrise? (i.e. during the night)
-	mr, mrok = db.Moonrise(now)
-	if mrok && now.Before(mr) && mr.Before(s) {
-		s = mr
-	}
-
-ok:
-	sltime := s.Sub(time.Now())
-	log.Println("next event is at", s, ", sleeping", sltime)
-	time.Sleep(sltime)
+	log.Println(minwhat, "is at", now.Add(min), ", sleeping", min)
+	time.Sleep(min)
 }
 
 var rpt2014 = `             o  ,    o  ,                                    MONT-LA-VILLE                             Astronomical Applications Dept.
