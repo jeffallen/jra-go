@@ -1,0 +1,5 @@
+To develop:
+	~/go_appengine/dev_appserver.py .
+
+To deploy:
+	~/go_appengine/appcfg.py --oauth2 update .

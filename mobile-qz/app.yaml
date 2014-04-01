@@ -1,0 +1,24 @@
+application: mobile-qz
+version: 1
+runtime: go
+api_version: go1
+
+handlers:
+- url: /scripts
+  static_dir: static/scripts
+
+- url: /robots.txt
+  static_files: static/robots.txt
+  upload: static/robots.txt
+ 
+- url: /google1e289df47a51b487.html
+  static_files: static/google1e289df47a51b487.html
+  upload: static/google1e289df47a51b487.html
+
+- url: /favicon\.ico
+  static_files: static/images/favicon.ico
+  upload: static/images/favicon.ico
+
+- url: /.*
+  script: _go_app
+
