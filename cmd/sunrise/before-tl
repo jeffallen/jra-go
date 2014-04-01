@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# turn off the streamer, so that the still pictures can be taken
+stream-stop
