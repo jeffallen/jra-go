@@ -1,0 +1,4 @@
+To assemble a program: ./clue -assemble prog.src
+
+To assemble and run a program: ./clue -assemble prog.src | ./clue
+
