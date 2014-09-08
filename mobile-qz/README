@@ -1,4 +1,5 @@
-To deploy:
+To develop:
+	~/go_appengine/dev_appserver.py .
 
-	cd ..
-	~/google_appengine/appcfg.py --oauth2 update mobile-qz
+To deploy:
+	~/go_appengine/appcfg.py --oauth2 update .

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -45,6 +46,11 @@ type Byline struct {
 	Authors      []Author
 }
 
+type Dates struct {
+	Published string
+	Updated   string
+}
+
 type Result struct {
 	Id         int
 	Title      string
@@ -53,6 +59,7 @@ type Result struct {
 	Content    string
 	Byline     Byline
 	Taxonomies Taxonomy
+	Date       Dates
 }
 
 type Taxonomy struct {
@@ -220,14 +227,27 @@ func articlePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	art.Content = stripReadThisNext(art.Content)
+
 	b := &bytes.Buffer{}
 	fmt.Fprintf(b, "<h1> %s </h1>\n", art.Title)
-	fmt.Fprintf(b, "<p>By: %v\n", art.byline())
+	fmt.Fprintf(b, "<p>By: %v, on %v\n", art.byline(), fmtDate(art.Date.Updated))
 	fmt.Fprintf(b, "<small><i><p>%v</p></i></small>\n", art.tags())
 	fmt.Fprintf(b, "%v", art.Content)
 
 	p := Page{Title: art.Title, Body: string(b.Bytes())}
 	page.Execute(w, p)
+}
+
+var reStripRTN = regexp.MustCompile("<h3>.*</h3>")
+
+func stripReadThisNext(in string) string {
+	return reStripRTN.ReplaceAllString(in, "")
+}
+
+func fmtDate(in string) (out string) {
+	dt, _ := time.Parse("2006-01-02 15:04:05", in)
+	return dt.Format("January 2, 2006")
 }
 
 func frontPage(w http.ResponseWriter, r *http.Request) {
