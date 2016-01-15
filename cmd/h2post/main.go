@@ -2,37 +2,18 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
-	"errors"
 	"flag"
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strings"
+
+	"golang.org/x/net/http2"
 )
 
 var insecure = flag.Bool("insecure", false, "allow insecure TLS connections?")
-
-// A DialTLS that returns error if the server won't agree to do HTTP/2.
-func dialTLSonlyHTTP2(network, addr string) (net.Conn, error) {
-	cfg := &tls.Config{
-		InsecureSkipVerify: *insecure,
-		NextProtos:         []string{"h2"},
-	}
-
-	c, err := tls.Dial(network, addr, cfg)
-	if err != nil {
-		return nil, err
-	}
-	st := c.ConnectionState()
-	if st.NegotiatedProtocol != "h2" {
-		return nil, errors.New("server does not support HTTP/2")
-	}
-	return c, nil
-}
 
 func main() {
 	flag.Parse()
@@ -46,7 +27,7 @@ func main() {
 	}
 	body := bytes.NewBuffer(in)
 
-	client := &http.Client{Transport: &http.Transport{DialTLS: dialTLSonlyHTTP2}}
+	client := &http.Client{Transport: &http2.Transport{}}
 	resp, err := client.Post(url, "application/binary", body)
 	if err != nil {
 		log.Fatal(err)
